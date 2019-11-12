@@ -7,11 +7,11 @@ Azure VM can be manually deployed or you can use the script:
 * .\New-AzureSDNNested.ps1 -ConfigurationDataFile .\AzureVM.psd1
 
 Azure VM acting as Hypv Server (1st level of Nested virtualization )
-* One DC + one ToR Router
+* One DC acting as ToR Router (router between SDN Stack and outside)
 * Two Hypv host (Cluster with S2D Disk pool) where SDN stack will be deployed (with SDN Express script)
-* Two tenants "physical" Gateway (Tenants Contoso L3 and Fabrikam GRE tunnem)
+* Two tenants "physical" Gateway (Tenants Contoso L3 and Fabrikam GRE tunnel) to simulate remote tenant network (outside the SDN Stack)
 
-On SDN-HOST Hypv Server (2nd level of Nested virtualization ):
+On the SDN-HOST Hypv Server (2nd level of Nested virtualization ):
 * One Network controller Cluster composed of 3 nodes
 * Two Gateways + Tenants vGW (L3 + GRE)
 * Two MUXes
@@ -28,7 +28,9 @@ IP subnets and VLAN:
     *  Fabrikam-testVM01 - 172.16.1.10/24
     *  Fabrikam-testVM02 - 172.16.1.10/24
 
-
+On the Azure VM itself:
+* WAC is installed https://localhost to manage S2D cluster and SDN stack
+* Wireshark is installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance)
 
 ## Usage
 *   Deploy Azure VM :
