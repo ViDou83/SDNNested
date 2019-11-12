@@ -220,6 +220,8 @@ catch { }
 if ( ($null -eq $MgmtNetIpAddr) -or ($MgmtNetIpAddr -ne $AzureVmSDNIp)) {
     Write-Host -ForegroundColor Green "Adding Ip address/mask $($configdata.AzureVmSDNMgmtIP) on AzureVM : $env:COMPUTERNAME"
     $MgmtNetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $AzureVmSDNIp -PrefixLength $AzureVmSDNMask | Out-Null
+    $MgmtNetAdapter | Set-DnsClientServerAddress -ServerAddresses $($configdata.ManagementDNS)[0] | Out-Null
+
 }
 
 $MgmtVNIC | Set-VMNetworkAdapterVlan -Access -VlanId $configdata.ManagementVLANID
@@ -364,7 +366,7 @@ foreach ( $node in $configdata.HyperVHosts) {
         Enable-WSManCredSSP -Role Server -Force
         Set-VMHost  -EnableEnhancedSessionMode $true
     } -ArgumentList $Node.NICs[0].VLANID
-    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 7-11 -NativeVlanId 0
+    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 7-1001 -NativeVlanId 0
     #Adding credential to the cache
     Invoke-Expression -Command "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword"
 }
@@ -377,7 +379,10 @@ Start-Sleep 60
 Write-Host -ForegroundColor Green "Step 6 - Creating new S2D Failover cluster for Hyperconverged SDN"
 New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName 
 
-Write-Host -ForegroundColor Green "SDN HyperConverged Cluster is ready. It's time to deploy the SDN Stack using SNDExpress script"
+Write-Host -ForegroundColor Yellow "Adding entry in Azure VM's host file to manage S2D and SDN with WAC"
+Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
+
+Write-Host -ForegroundColor Green "SDN HyperConverged Cluster is ready."
 Write-Host -ForegroundColor Green ""
 
 Write-Host -ForegroundColor Green "Creating SMBSHare containing VHDX template to use with SDNExpress deployment"
@@ -508,7 +513,7 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
 
                     if ( ! $BpgPeer ) {                 
                         Add-BgpPeer -Name $TenantvGW.VirtualGwName -LocalIPAddress $TenantvGW.BgpPeerIpAddress -LocalASN $TenantvGW.BgpPeerAsNumber `
-                            -PeerIPAddress $TenantvGW.BgpLocalRouterIP[0] -PeerASN $TenantvGW.BgpLocalExtAsNumber -OperationMode Mixed `
+                            -PeerIPAddress $TenantvGW.BgpLocalRouterIP[0] -PeerASN $($TenantvGW.BgpLocalExtAsNumber).split(".")[1] -OperationMode Mixed `
                             -PeeringMode Automatic
                     }   
                 }
