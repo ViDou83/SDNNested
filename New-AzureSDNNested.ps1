@@ -1,6 +1,6 @@
 Param(
     [Parameter(Mandatory = $false, ParameterSetName = "ConfigurationFile")]
-    [String] $ConfigurationDataFile = ".\AzureVM.psd1"
+    [String] $ConfigurationDataFile = ".\configfiles\AzureVM.psd1"
 )
 
 Import-Module -Name Az.Compute

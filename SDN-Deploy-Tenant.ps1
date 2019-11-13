@@ -20,8 +20,8 @@ if (!$feature.Installed) {
 }
 
 import-module networkcontroller  
-import-module .\SDN-Deploy-Module.psm1 -force
-import-module .\SDNExpressModule.psm1
+import-module .\utils\SDN-Deploy-Module.psm1 -force
+import-module .\SDNExpress\SDNExpressModule.psm1
 
 # Script version, should be matched with the config files
 $ScriptVersion = "2.0"

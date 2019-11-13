@@ -44,11 +44,11 @@
 [CmdletBinding(DefaultParameterSetName = "NoParameters")]
 param(
     [Parameter(Mandatory = $false, ParameterSetName = "ConfigurationFile")]
-    [String] $ConfigurationDataFile = ".\SDNNested-Deploy-Infra.psd1"
+    [String] $ConfigurationDataFile = ".\utils\SDNNested-Deploy-Infra.psd1"
 )    
 
-import-module .\SDNExpressModule.psm1 -force
-import-module .\SDNNested-Module.psm1 -force
+import-module .\SDNExpress\SDNExpressModule.psm1 -force
+import-module .\utils\SDNNested-Module.psm1 -force
 
 # Script version, should be matched with the config files
 $ScriptVersion = "2.0"
