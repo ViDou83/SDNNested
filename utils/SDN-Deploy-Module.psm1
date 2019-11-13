@@ -142,12 +142,12 @@ function Add-UnattendFileToVHD {
                         </DomainAccounts>
 "@
 
-    if ( $ComputerName -match "DC" -or $ComputerName -match "GW" ) {
+    if ( $ComputerName -match "DC" -or $ComputerName -match "GW" -or $ComputerName -match "Tenant") {
         $UnattendedJoin = $null
     }
 
-    if ( $ComputerName -match "GW"){
-        $DomainAccount = $null
+    if ( $ComputerName -match "GW" -or $ComputerName -match "Tenant") {
+        $UnattendedDomainAccount = $null
     }
 
     $UnattendFile = @"
@@ -239,7 +239,8 @@ function New-SdnVM() {
         [String] $ProductKey = "",
         [String] $Locale = [System.Globalization.CultureInfo]::CurrentCulture.Name,
         [String] $TimeZone = [TimeZoneInfo]::Local.Id,
-        [String] $DomainFQDN
+        [String] $DomainFQDN,
+        [String] $HypvHost
     )
     
     $CurrentVMLocationPath = "$VMLocation\$VMName"
@@ -275,7 +276,7 @@ function New-SdnVM() {
 
         $VHDOsFile = $(Get-Item $CurrentVMLocationPath\*.vhdx).FullName
 
-        $NewVM = New-VM -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
+        $NewVM = New-VM -ComputerName $HypvHost -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
         $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
 
         for ( $i = 0; $i -lt $Nics.count; $i++ ) {

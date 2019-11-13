@@ -4,7 +4,7 @@ SDNNested is a collection of PS Script that automates the Microsoft SDN deployme
 ## Infrastucture deployed with provided config files
 
 Azure VM can be manually deployed or you can use the script:
-* .\New-AzureSDNNested.ps1 -ConfigurationDataFile .\AzureVM.psd1
+* .\New-AzureSDNNested.ps1 -ConfigurationDataFile .\configfiles\AzureVM.psd1
 
 Azure VM acting as Hypv Server (1st level of Nested virtualization )
 * One DC acting as ToR Router (router between SDN Stack and outside)

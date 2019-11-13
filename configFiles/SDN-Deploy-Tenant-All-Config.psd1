@@ -26,7 +26,6 @@
             TenantVirtualSubnetId             = "VSUBNET-Tenant-Contoso-WebTier"
             TenantVirtualSubnetAddressPrefix  = @( "172.16.1.0/24" )
             DomainFQDN                        = "contoso.local"
-        
         },
         @{
             Name                              = "Fabrikam";
@@ -36,7 +35,6 @@
             TenantVirtualSubnetId             = "VSUBNET-Tenant-Fabrikam-WebTier"
             TenantVirtualSubnetAddressPrefix  = @( "172.16.1.0/24" )
             DomainFQDN                        = "fabrikam.local"
-
         }
     )
 
@@ -86,46 +84,50 @@
         @{
             HypvHostname = "SDN-HOST01.SDN.LAB"
             Tenant       = "Contoso"
-            Name = 'Contoso-TestVM01'
+            Name         = 'Tenant-Contoso-VM01'
+            roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
-                                @{ 
-                                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
-                                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                                };
-                            )   
+                @{ 
+                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
+                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                };
+            )   
         },
         @{
             HypvHostname = "SDN-HOST02.SDN.LAB"
             Tenant       = "Contoso"
-            Name         = 'Contoso-TestVM02'
+            Name         = 'Tenant-Contoso-VM02'
+            roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
-                                @{ 
-                                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                                };
-                            )   
+                @{ 
+                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
+                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                };
+            )   
         },
         @{
             HypvHostname = "SDN-HOST01.SDN.LAB"
             Tenant       = "Fabrikam"
-            Name         = 'Fabrikam-TestVM01'
+            Name         = 'Tenant-Fabrikam-VM01'
+            roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
-                                @{ 
-                                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
-                                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                                };
-                            )
+                @{ 
+                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
+                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                };
+            )
         },
         @{
             HypvHostname = "SDN-HOST02.SDN.LAB"
             Tenant       = "Fabrikam"            
-            Name         = 'Fabrikam-TestVM02'
+            Name         = 'Tenant-Fabrikam-VM02'
+            roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
-                                @{ 
-                                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                                };
-                            )   
+                @{ 
+                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
+                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                };
+            )   
         }
     )
 
