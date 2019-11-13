@@ -240,11 +240,12 @@ foreach ($Tenant in $configdata.Tenants) {
 ############## CREATING TENANTS VM
 #######
 #Adding the VM for each tenant
+<#
 $paramsTenant = @{
     'VMLocation'          = $ConfigData.VMLocation;
     'VMName'              = '';
     'VHDSrcPath'          = $ConfigData.VHDPath;
-    'VHDName'             = '';
+    'VHDName'             =  $ConfigData.VHDFile;
     'VMMemory'            = $ConfigData.VMMemory;
     'VMProcessorCount'    = $ConfigData.VMProcessorCount;
     'SwitchName'          = $ConfigData.SwitchName;
@@ -262,6 +263,30 @@ $paramsTenant = @{
     'ProductKey'          = $ConfigData.ProductKey;
     'HypvHost'            = '';
 }
+#>
+
+$paramsTenant = @{
+    'VMLocation'          = $ConfigData.VMLocation;
+    'VMName'              = '';
+    'VHDSrcPath'          = $ConfigData.VHDPath;
+    'VHDName'             = $ConfigData.VHDFile;
+    'VMMemory'            = $ConfigData.VMMemory;
+    'VMProcessorCount'    = $ConfigData.VMProcessorCount;
+    'SwitchName'          = $ConfigData.SwitchName;
+    'NICs'                = @();
+    'CredentialDomain'    = $DomainJoinUserNameDomain;
+    'CredentialUserName'  = $DomainJoinUserNameName;
+    'CredentialPassword'  = $DomainJoinPassword;
+    'JoinDomain'          = $ConfigData.DomainFQDN;
+    'LocalAdminPassword'  = $LocalAdminPassword;
+    'DomainAdminDomain'   = $LocalAdminDomainUserDomain;
+    'DomainAdminUserName' = $LocalAdminDomainUserName;
+    'IpGwAddr'            = $ConfigData.ManagementGateway;
+    'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
+    'DomainFQDN'          = $ConfigData.DomainFQDN;
+    'ProductKey'          = $ConfigData.ProductKey;
+    'HypvHost'            = '';
+}
 
 foreach ($TenantVM in $configdata.TenantVMs) {
             
@@ -269,7 +294,6 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
     $vm = Get-VM -ComputerName $configdata.HYPV | ? Name -eq $TenantVM.Name
     
-
     if ($null -eq $vm) { 
         Write-Host -ForegroundColor Yellow "Adding VM=$($TenantVM.Name) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
         $paramsTenant.VMName = $TenantVM.Name
@@ -281,11 +305,12 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         Write-Host -ForegroundColor Yellow "VM $($TenantVM.Name) already exist on $($vm.computername)"                
     }
 
-    $cred = New-Object System.Management.Automation.PSCredential("administrator", $LocalAdminPassword)
+    $secpasswd = ConvertTo-SecureString $LocalAdminPassword -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential("administrator", $secpasswd)
 
     Invoke-Command -computername $TenantVM.HypvHostname {
 
-        Get-SmbShare -Name VMShare -ErrorAction Ignore | remove-SMBShare -Force | out-null
+        #Get-SmbShare -Name VMShare -ErrorAction Ignore | remove-SMBShare -Force | out-null
       
         $feature = get-windowsfeature "RSAT-NetworkController"
         if ($feature -eq $null) {
@@ -298,6 +323,15 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         import-module networkcontroller  
 
         $TenantVM = $args[0]; $vm = $args[1]; $uri = $args[2]; $cred = $args[3]
+        #$TenantVM
+
+        try {
+            Start-VM $TenantVM.Name -ErrorAction stop
+        }
+        catch { 
+            Write-Host -ForegroundColor Red "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
+            break;
+        }
 
         Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
@@ -306,7 +340,7 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
         #Attaching to the tenant VNET
         foreach ( $NIC in $TenantVM.NICs) {
-            Stop-VM -VMName $vm.Name -Force
+            Stop-VM -VMName $TenantVM.Name -Force
 
             $vmnicproperties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceProperties
             $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"
@@ -332,6 +366,8 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
             $vmnicproperties.IpConfigurations = @($ipconfiguration)
 
+            Write-host -ForegroundColor Yellow "Pushing  $($TenantVM.Name) NIC config to REST API"
+
             $nic = New-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -Properties $vmnicproperties `
                 -ConnectionUri $uri -Force
                    
@@ -339,9 +375,11 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
             $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
                                 
-            $vmNics = Get-VMNetworkAdapter -VMName $vm.Name
+            $vmNics = Get-VMNetworkAdapter -VMName $TenantVM.Name
                                 
             $CurrentFeature = Get-VMSwitchExtensionPortFeature -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
+
+            Write-host -ForegroundColor Yellow "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
 
             if ($null -eq $CurrentFeature) {
                 $Feature = Get-VMSystemSwitchExtensionPortFeature -FeatureId $FeatureId
@@ -367,13 +405,13 @@ foreach ($TenantVM in $configdata.TenantVMs) {
             Start-Sleep 10
             
             $nic = Get-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -ConnectionUri $uri
-                   
+            
             $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress
             
         }   
-        
-        $vm | Start-VM
-    
+
+        Start-VM $TenantVM.Name
+            
         Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
@@ -387,62 +425,87 @@ foreach ($TenantVM in $configdata.TenantVMs) {
                 Restart-Computer -Force
             } -ArgumentList $TenantVM.roles
         }
+
+        Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
-    } -ArgumentList $TenantVM, $vm, $uri; $cred
+        while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
+                    -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
 
-}
+        Invoke-Command -VMName $TenantVM.Name -Credential $cred {
+            $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
+            $index = Get-Random -Minimum 0 -Maximum 8
+            mv C:\inetpub\wwwroot\iisstart.htm C:\inetpub\wwwroot\iisstart.htm.old -Force
+            $background = $colors[$index]
+            $content = @"
+<html>
+<body bgcolor="$background">
+<h1>$env:computername</h1>
+</body>
+</html>
+"@
+            Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
+        }
+    
+    } -ArgumentList $TenantVM, $vm, $uri, $cred
 
-
-<#
-$Connectionuri="https://NCFABRIC.SDN.LAB"
-
-$vip = "41.40.40.8"
-$vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $Connectionuri -ResourceId "PublicVIP"
-$LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
-
-$lbresourceId = "LB_$($vip.Replace('.','_'))"
-# Create a front-end IP configuration
-
-$FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
+    foreach ($vip in $configdata.SlbVIPs) {
         
-$FrontEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfigurationProperties
-$FrontEnd.resourceId = "FE1"
-$FrontEnd.ResourceRef = "/loadBalancers/$lbresourceId/frontendIPConfigurations/$($FrontEnd.ResourceId)"
-$FrontEnd.properties.PrivateIPAddress = $vip
-$FrontEnd.Properties.PrivateIPAllocationMethod = "static"
-$FrontEnd.Properties.Subnet = @{}
-$FrontEnd.Properties.Subnet.ResourceRef = $vipLogicalNetwork.Properties.Subnets[0].ResourceRef
-$LoadBalancerProperties.frontendipconfigurations += $FrontEnd
+        $vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId "PublicVIP"
+        $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
 
-# Create a back-end address pool
+        $lbresourceId = "LB_$($vip.Tenant)_$($vip.Replace('.','_'))"
+        # Create a front-end IP configuration
 
-$BackEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPool
-$BackEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPoolProperties
-$BackEnd.resourceId = "BE1"
-$BackEnd.ResourceRef = "/loadBalancers/$lbresourceId/backendAddressPools/$($BackEnd.ResourceId)"
-        
-$LoadBalancerProperties.backendAddressPools += $BackEnd
+        $FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
+                
+        $FrontEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfigurationProperties
+        $FrontEnd.resourceId = "$($vip.Tenant)-FE1"
+        $FrontEnd.ResourceRef = "/loadBalancers/$lbresourceId/frontendIPConfigurations/$($FrontEnd.ResourceId)"
+        $FrontEnd.properties.PrivateIPAddress = $vip.VIP
+        $FrontEnd.Properties.PrivateIPAllocationMethod = $vip.VIPAllocationMethod
+        $FrontEnd.Properties.Subnet = @{}
+        $FrontEnd.Properties.Subnet.ResourceRef = $vipLogicalNetwork.Properties.Subnets[0].ResourceRef
+        $LoadBalancerProperties.frontendipconfigurations += $FrontEnd
 
-# Create the Load Balancing Rules
-$LoadBalancerProperties.loadbalancingRules += $lbrule = new-object Microsoft.Windows.NetworkController.LoadBalancingRule
-$lbrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancingRuleProperties
-$lbrule.ResourceId = "Contoso-WebRainbow"
-$lbrule.properties.frontendipconfigurations += $FrontEnd
-$lbrule.properties.backendaddresspool = $BackEnd 
-$lbrule.properties.protocol = "TCP"
-$lbrule.properties.frontendPort = $lbrule.properties.backendPort = 80
-$lbrule.properties.IdleTimeoutInMinutes = 4
+        # Create a back-end address pool
 
-$lb = New-NetworkControllerLoadBalancer -ConnectionUri $Connectionuri -ResourceId $lbresourceId -Properties $LoadBalancerProperties -Force
+        $BackEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPool
+        $BackEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPoolProperties
+        $BackEnd.resourceId = "$($vip.Tenant)-BE1"
+        $BackEnd.ResourceRef = "/loadBalancers/$lbresourceId/backendAddressPools/$($BackEnd.ResourceId)"
+                
+        $LoadBalancerProperties.backendAddressPools += $BackEnd
 
-$nic1 = Get-NetworkControllerNetworkInterface -ConnectionUri $Connectionuri -ResourceId "Contoso-TestVM01_IP1"
-$nic1.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
-New-NetworkControllerNetworkInterface -ResourceId $nic1.ResourceId -Properties $nic1.Properties -ConnectionUri $Connectionuri -Force 
+        # Create the Load Balancing Rules
+        $LoadBalancerProperties.loadbalancingRules += $lbrule = new-object Microsoft.Windows.NetworkController.LoadBalancingRule
+        $lbrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancingRuleProperties
+        $lbrule.ResourceId = "$($vip.Tenant)-WebRainbow"
+        $lbrule.properties.frontendipconfigurations += $FrontEnd
+        $lbrule.properties.backendaddresspool = $BackEnd 
+        $lbrule.properties.protocol = $vip.Protocol
+        $lbrule.properties.frontendPort = $vip.FrontendPort
+        $lbrule.properties.backendPort = $vip.BackendPort
+        $lbrule.properties.IdleTimeoutInMinutes = 4
 
-$nic2 = Get-NetworkControllerNetworkInterface -ConnectionUri $Connectionuri -ResourceId "Contoso-TestVM02_IP1"
-$nic2.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
-New-NetworkControllerNetworkInterface -ResourceId $nic2.ResourceId -Properties $nic2.Properties -ConnectionUri $Connectionuri -Force  
+        $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
+            -Properties $LoadBalancerProperties -Force
 
+        foreach ($vm in $vip.TenantVMs) {
+            $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_IP1"
+            if ($nic) {
+                $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
+                New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
+                    -ConnectionUri $uri -Force 
+            }
+            else {
+                
+            }
+        }
+
+
+    }
+
+    <#
 #To DELETE
 $NetConn = Get-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
 $NetConn  | %{ Remove-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force}
@@ -455,6 +518,11 @@ $LogNet | %{ Remove-NetworkControllerLogicalNetwork -ConnectionUri https://NCFAB
 
 $vNet = Get-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
 $vNet | %{ Remove-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
-
-
 #>
+}
+
+
+
+
+
+

@@ -1,22 +1,22 @@
 @{
-    ScriptVersion                     = "2.0"
+    ScriptVersion        = "2.0"
 
-    VHDPath                           = "Z:"
-    VHDFile                           = "Win2019-Core.vhdx"
-    VMLocation                        = "C:\ClusterStorage\S2D_CSV1\VMs"
+    VHDPath              = "Z:"
+    VHDFile              = "Win2019-Core.vhdx"
+    VMLocation           = "C:\ClusterStorage\S2D_CSV1\VMs"
     
-    ProductKey                        = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
-    VMMemory                          = 2GB
-    VMProcessorCount                  = 2
-    SwitchName                        = "SDNSwitch"
+    VMMemory             = 2GB
+    VMProcessorCount     = 2
+    SwitchName           = "SDNSwitch"
 
-    HYPV                              = @("SDN-HOST01.SDN.LAB","SDN-HOST02.SDN.LAB")
+    HYPV                 = @("SDN-HOST01.SDN.LAB", "SDN-HOST02.SDN.LAB")
 
-    DomainJoinUserName                = "SDN\adminisrator"
-    LocalAdminDomainUser              = "SDN\adminisrator"
+    DomainJoinUserName   = "SDN\administrator"
+    LocalAdminDomainUser = "SDN\administrator"
 
-    Tenants                           = 
+    Tenants              = 
     @(
         @{
             Name                              = "Contoso";
@@ -38,7 +38,7 @@
         }
     )
 
-    TenantvGWs            =
+    TenantvGWs           =
     @(
         @{
             Tenant                      = "Contoso"
@@ -79,25 +79,27 @@
         }
     )
     
-    TenantVMs = 
+    TenantVMs            = 
     @(
         @{
-            HypvHostname = "SDN-HOST01.SDN.LAB"
+            HypvHostname = "SDN-HOST02.SDN.LAB"
             Tenant       = "Contoso"
-            Name         = 'Tenant-Contoso-VM01'
-            roles        = @("Web-Server", "Web-Mgmt-Service")            
+            Name         = 'Contoso-VM01'
+            roles        = @("Web-Server", "Web-Mgmt-Service")
+            VIP          = "41.40.40.8"             
             NICs         = @( 
                 @{ 
                     Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
                     DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
+
         },
         @{
-            HypvHostname = "SDN-HOST02.SDN.LAB"
+            HypvHostname = "SDN-HOST01.SDN.LAB"
             Tenant       = "Contoso"
-            Name         = 'Tenant-Contoso-VM02'
-            roles        = @("Web-Server", "Web-Mgmt-Service")            
+            Name         = 'Contoso-VM02'
+            roles        = @("Web-Server", "Web-Mgmt-Service")
             NICs         = @( 
                 @{ 
                     Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
@@ -106,9 +108,9 @@
             )   
         },
         @{
-            HypvHostname = "SDN-HOST01.SDN.LAB"
+            HypvHostname = "SDN-HOST02.SDN.LAB"
             Tenant       = "Fabrikam"
-            Name         = 'Tenant-Fabrikam-VM01'
+            Name         = 'Fabrikam-VM01'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
                 @{ 
@@ -118,9 +120,9 @@
             )
         },
         @{
-            HypvHostname = "SDN-HOST02.SDN.LAB"
+            HypvHostname = "SDN-HOST01.SDN.LAB"
             Tenant       = "Fabrikam"            
-            Name         = 'Tenant-Fabrikam-VM02'
+            Name         = 'Fabrikam-VM02'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
             NICs         = @( 
                 @{ 
@@ -130,6 +132,31 @@
             )   
         }
     )
+
+    SlbVIPs                 =
+    @(
+        @{
+            Tenant              = "Contoso"
+            Name                = 'Contoso-WebRainbow'
+            VIP                 = "41.40.40.8"
+            VIPAllocationMethod = "static" 
+            FrontendPort        = 80
+            BackendPort         = 80   
+            Protocol            = "TCP"
+            TenantVMs           = @("Contoso-VM01", "Contoso-VM02")     
+        },
+        @{
+            Tenant              = "Fabrikam"
+            Name                = 'Fabrikam-WebRainbow'
+            VIP                 = "41.40.40.8"
+            VIPAllocationMethod = "static" 
+            FrontendPort        = 80
+            BackendPort         = 80
+            Protocol            = "TCP"
+            TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
+        }
+    )
+    
 
     RestURI = "https://NCFABRIC.SDN.LAB"
 

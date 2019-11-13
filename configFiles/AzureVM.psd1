@@ -4,7 +4,7 @@
 
     # Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
     VMSize                     = "Standard_E8_v3"
-    VMName                     = "SDN-11082019"
+    VMName                     = "SDN-11132019"
     VMLocalAdminUser           = "vidou"
     VMLocalAdminSecurePassword = "Azertyuiop!01" 
     ## Azure Account
@@ -23,6 +23,10 @@
 
     DiskNumber                 = 8
     DiskSizeGB                 = 128
+    vDiskDriveLetter            = 'Z'
+    AZFileShare     = "\\microrgsrvnewv092310260.file.core.windows.net\sdntemplate"
+    AZFileUser      = "Azure\microrgsrvnewv092310260"
+    AZFilePwd       = "w78qJNa3j46hmXpDY+D6DL0286n/5s+ePP3swCvNNX3KR28gDZCA3OBadKb3XUX+whNkP3m2mEmVV+FQ9HEThA=="
 }
 
 

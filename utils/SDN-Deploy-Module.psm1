@@ -147,7 +147,7 @@ function Add-UnattendFileToVHD {
     }
 
     if ( $ComputerName -match "GW" -or $ComputerName -match "Tenant") {
-        $UnattendedDomainAccount = $null
+        $DomainAccount = $null
     }
 
     $UnattendFile = @"

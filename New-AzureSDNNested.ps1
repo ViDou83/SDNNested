@@ -147,7 +147,7 @@ Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -VMName $VMName -Scr
 Remove-Item $env:temp\injectedscript.ps1
 
 while ((Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $VMName) { Start-Sleep -Seconds 1 }  
+            -ea SilentlyContinue) -ne $VMName) { Start-Sleep -Seconds 1 }  
 
 Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     #https://docs.microsoft.com/fr-fr/windows-server/storage/storage-spaces/deploy-standalone-storage-spaces
@@ -159,7 +159,9 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     $virtualDisk = new-VirtualDisk -StoragePoolFriendlyName $StoragePool.FriendlyName -FriendlyName "VirtualDisk1" `
         -ResiliencySettingName $VDiskResiliency -UseMaximumSize -NumberOfColumns $disks.Count
 
-    Get-VirtualDisk -FriendlyName $virtualDisk.FriendlyName | Get-Disk | Initialize-Disk -PassThru | New-Partition -AssignDriveLetter `
+    $DriveLetter = $configdata.vDiskDriveLetter
+
+    Get-VirtualDisk -FriendlyName $virtualDisk.FriendlyName | Get-Disk | Initialize-Disk -PassThru | New-Partition -DriveLetter $DriveLetter `
         -UseMaximumSize | Format-Volume
 
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*.sdn.lab" -Force
@@ -167,8 +169,36 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     Add-MpPreference -ExclusionExtension "vhd"
     Add-MpPreference -ExclusionExtension "vhdx"
 
+    if (! (Test-Path "$($DriveLetter):\VMs") ) { 
+        mkdir "$($DriveLetter):\VMs"
+        mkdir "$($DriveLetter):\VMs\Template"
+    }
+    if (! (Test-Path "$($DriveLetter):\VMs\Template") ) { 
+        mkdir "$($DriveLetter):\VMs\Template"
+    }
+
+    $AzFileShare = $configdata.AzFileShare
+    $AzFQDN = ($AzFileShare).split("\")[0].replace("\\", "")
+    $AZFileUser = = $configdata.AZFileUser    
+    $AZFilePwd = = $configdata.AZFilePwd
+
+    cmdkey /add:$AzFQDN  /user:$AZFileUser /pass:$AZFilePwd
+    net use Z: $AzFileShare /persistent:yes
+
+    if ( Test-Path "Z:\Template") {
+        cp Z:\Template\*.vhdx "$($DriveLetter):\VMs\Template" 
+    }
+    else{
+        Write-Host -ForegroundColor Yellow "Cannot get VHDX Template from $AZFileShare. You need to place it manually to $($DriveLetter):\VMs\Template"
+    }
+
     Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
 }
+
+<#
+cmdkey /add:microrgsrvnewv092310260.file.core.windows.net /user:Azure\microrgsrvnewv092310260 /pass:w78qJNa3j46hmXpDY+D6DL0286n/5s+ePP3swCvNNX3KR28gDZCA3OBadKb3XUX+whNkP3m2mEmVV+FQ9HEThA==
+net use Z: \\microrgsrvnewv092310260.file.core.windows.net\sdntemplate / persistent:Yes
+#>
 
 Write-Host -ForegroundColor Green "AZ VM $VMName is running and can be RDP on $($PIP.DnsSettings.Fqdn)"
 Write-Host "mstsc /v:$($PIP.DnsSettings.Fqdn)"
