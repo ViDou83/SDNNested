@@ -1,7 +1,7 @@
 @{
     ScriptVersion        = "2.0"
 
-    VHDPath              = "E:\VMs\Template"
+    VHDPath              = "F:\VMs\Template"
     VHDFile              = "Win2019-Core.vhdx"
 
     VMLocation           = "F:\VMs"
