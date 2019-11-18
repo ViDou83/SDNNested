@@ -240,31 +240,6 @@ foreach ($Tenant in $configdata.Tenants) {
 ############## CREATING TENANTS VM
 #######
 #Adding the VM for each tenant
-<#
-$paramsTenant = @{
-    'VMLocation'          = $ConfigData.VMLocation;
-    'VMName'              = '';
-    'VHDSrcPath'          = $ConfigData.VHDPath;
-    'VHDName'             =  $ConfigData.VHDFile;
-    'VMMemory'            = $ConfigData.VMMemory;
-    'VMProcessorCount'    = $ConfigData.VMProcessorCount;
-    'SwitchName'          = $ConfigData.SwitchName;
-    'NICs'                = @();
-    'CredentialDomain'    = '';
-    'CredentialUserName'  = '';
-    'CredentialPassword'  = '';
-    'JoinDomain'          = '';
-    'LocalAdminPassword'  = $LocalAdminPassword;
-    'DomainAdminDomain'   = '';
-    'DomainAdminUserName' = '';
-    'IpGwAddr'            = $ConfigData.ManagementGateway;
-    'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
-    'DomainFQDN'          = $ConfigData.DomainFQDN;
-    'ProductKey'          = $ConfigData.ProductKey;
-    'HypvHost'            = '';
-}
-#>
-
 $paramsTenant = @{
     'VMLocation'          = $ConfigData.VMLocation;
     'VMName'              = '';
@@ -419,9 +394,25 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
         if ( $TenantVM.roles) {
             Write-Host -ForegroundColor Green  "Adding required features on VM $($TenantVM.Name)"
+           
             Invoke-Command -VMName $TenantVM.Name -Credential $cred {
                 $FeatureList = $args[0]
+                
                 Add-WindowsFeature $FeatureList 
+
+                $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
+                $index = Get-Random -Minimum 0 -Maximum 8
+                mv C:\inetpub\wwwroot\iisstart.htm C:\inetpub\wwwroot\iisstart.htm.old -Force
+                $background = $colors[$index]
+                $content = @"
+<html>
+<body bgcolor="$background">
+<h1>$env:computername</h1>
+</body>
+</html>
+"@
+                Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
+
                 Restart-Computer -Force
             } -ArgumentList $TenantVM.roles
         }
@@ -430,7 +421,7 @@ foreach ($TenantVM in $configdata.TenantVMs) {
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-
+<#
         Invoke-Command -VMName $TenantVM.Name -Credential $cred {
             $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
             $index = Get-Random -Minimum 0 -Maximum 8
@@ -445,84 +436,126 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 "@
             Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
         }
-    
+  #>
+
     } -ArgumentList $TenantVM, $vm, $uri, $cred
 
-    foreach ($vip in $configdata.SlbVIPs) {
-        
-        $vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId "PublicVIP"
-        $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
-
-        $lbresourceId = "LB_$($vip.Tenant)_$($vip.Replace('.','_'))"
-        # Create a front-end IP configuration
-
-        $FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
-                
-        $FrontEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfigurationProperties
-        $FrontEnd.resourceId = "$($vip.Tenant)-FE1"
-        $FrontEnd.ResourceRef = "/loadBalancers/$lbresourceId/frontendIPConfigurations/$($FrontEnd.ResourceId)"
-        $FrontEnd.properties.PrivateIPAddress = $vip.VIP
-        $FrontEnd.Properties.PrivateIPAllocationMethod = $vip.VIPAllocationMethod
-        $FrontEnd.Properties.Subnet = @{}
-        $FrontEnd.Properties.Subnet.ResourceRef = $vipLogicalNetwork.Properties.Subnets[0].ResourceRef
-        $LoadBalancerProperties.frontendipconfigurations += $FrontEnd
-
-        # Create a back-end address pool
-
-        $BackEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPool
-        $BackEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPoolProperties
-        $BackEnd.resourceId = "$($vip.Tenant)-BE1"
-        $BackEnd.ResourceRef = "/loadBalancers/$lbresourceId/backendAddressPools/$($BackEnd.ResourceId)"
-                
-        $LoadBalancerProperties.backendAddressPools += $BackEnd
-
-        # Create the Load Balancing Rules
-        $LoadBalancerProperties.loadbalancingRules += $lbrule = new-object Microsoft.Windows.NetworkController.LoadBalancingRule
-        $lbrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancingRuleProperties
-        $lbrule.ResourceId = "$($vip.Tenant)-WebRainbow"
-        $lbrule.properties.frontendipconfigurations += $FrontEnd
-        $lbrule.properties.backendaddresspool = $BackEnd 
-        $lbrule.properties.protocol = $vip.Protocol
-        $lbrule.properties.frontendPort = $vip.FrontendPort
-        $lbrule.properties.backendPort = $vip.BackendPort
-        $lbrule.properties.IdleTimeoutInMinutes = 4
-
-        $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
-            -Properties $LoadBalancerProperties -Force
-
-        foreach ($vm in $vip.TenantVMs) {
-            $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_IP1"
-            if ($nic) {
-                $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
-                New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
-                    -ConnectionUri $uri -Force 
-            }
-            else {
-                
-            }
-        }
-
-
-    }
-
-    <#
-#To DELETE
-$NetConn = Get-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
-$NetConn  | %{ Remove-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force}
-
-$vgw = Get-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB
-$vgw | %{ Remove-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
-
-$LogNet = Get-NetworkControllerLogicalNetwork -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
-$LogNet | %{ Remove-NetworkControllerLogicalNetwork -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
-
-$vNet = Get-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
-$vNet | %{ Remove-NetworkControllerVirtualNetwork -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
-#>
 }
 
+foreach ($vip in $configdata.SlbVIPs) {
+    
+    $vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId "PublicVIP"
+    $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
 
+    $lbresourceId = "LB_$($vip.Tenant)_$($vip.Replace('.','_'))"
+    # Create a front-end IP configuration
 
+    $FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
+            
+    $FrontEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfigurationProperties
+    $FrontEnd.resourceId = "$($vip.Tenant)-FE1"
+    $FrontEnd.ResourceRef = "/loadBalancers/$lbresourceId/frontendIPConfigurations/$($FrontEnd.ResourceId)"
+    $FrontEnd.properties.PrivateIPAddress = $vip.VIP
+    $FrontEnd.Properties.PrivateIPAllocationMethod = $vip.VIPAllocationMethod
+    $FrontEnd.Properties.Subnet = @{}
+    $FrontEnd.Properties.Subnet.ResourceRef = $vipLogicalNetwork.Properties.Subnets[0].ResourceRef
+    $LoadBalancerProperties.frontendipconfigurations += $FrontEnd
 
+    # Create a back-end address pool
 
+    $BackEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPool
+    $BackEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPoolProperties
+    $BackEnd.resourceId = "$($vip.Tenant)-BE1"
+    $BackEnd.ResourceRef = "/loadBalancers/$lbresourceId/backendAddressPools/$($BackEnd.ResourceId)"
+            
+    $LoadBalancerProperties.backendAddressPools += $BackEnd
 
+    # Create the Load Balancing Rules
+    $LoadBalancerProperties.loadbalancingRules += $lbrule = new-object Microsoft.Windows.NetworkController.LoadBalancingRule
+    $lbrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancingRuleProperties
+    $lbrule.ResourceId = "$($vip.Tenant)-WebRainbow"
+    $lbrule.properties.frontendipconfigurations += $FrontEnd
+    $lbrule.properties.backendaddresspool = $BackEnd 
+    $lbrule.properties.protocol = $vip.Protocol
+    $lbrule.properties.frontendPort = $vip.FrontendPort
+    $lbrule.properties.backendPort = $vip.BackendPort
+    $lbrule.properties.IdleTimeoutInMinutes = 4
+
+    $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
+        -Properties $LoadBalancerProperties -Force
+
+    foreach ($vm in $vip.TenantVMs) {
+        $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_IP1"
+        if ($nic) {
+            $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
+            New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
+                -ConnectionUri $uri -Force 
+        }
+        else {
+            Write-host -ForegroundColor yellow "SLB: Failed to add $vm NIC to the VIP BackendAddressPools. NetworkControllerNetworkInterface does not exist for $vm. "
+        }
+    }
+}
+
+#Fixing GRE and BGP peering on Tenants "physical" gateways
+winrm set winrm/config/client '@{TrustedHosts="*"}'
+
+try{
+    $configdataAZVM = [hashtable] (iex (gc .\configFiles\AzureVM.psd1 | out-string))
+    $configdataInfra = [hashtable] (iex (gc .\configFiles\AzureVM.psd1| out-string))
+}catch {}
+throw{ "Cannot get AzureVM.psd1 and AzureVM.psd1" }
+
+foreach( $Tenant in $configdata.Tenants) 
+{ 
+    $PhysicalGwVMName = $Tenant.PhysicalGwVMName
+
+    $vgw = Get-NetworkControllerVirtualGateway -ConnectionUri $uri | ? ResourceId -Match $Tenant.Name
+    
+    if ( $vgw.Properties.NetworkConnections.properties.ConnectionType -eq "GRE" ) 
+    {
+        $GreDestination = $vgw.Properties.NetworkConnections.properties.SourceIPAddress
+
+        Write-host -ForegroundColor yellow "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
+        if ( $GreDestination)
+        {
+            icm -ComputerName $configdataAZVM.VMName -Credential $configdataAZVM.VMLocalAdminUser 
+            { 
+                $cred=$args[0]
+                $PhysicalGwVMName=$args[1]
+                $GreDestination=$args[2]
+
+                icm -VMName $PhysicalGwVMName -Credential $cred 
+                {
+                    $GreDestination=$args[0]
+                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false
+                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -Destination $GreDestination
+                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $true
+                } -ArgumentList $GreDestination
+
+            } -ArgumentList $cred, $PhysicalGwVMName, $GreDestination
+        }
+    }
+
+    $BgpPeer = $vgw.Properties.BgpRouters.Properties.RouterIP
+
+    if( $BgpPeer)
+    {
+        Write-host -ForegroundColor yellow "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
+
+        icm -ComputerName $configdataAZVM.VMName -Credential $configdataAZVM.VMLocalAdminUser 
+        { 
+            $cred=$args[0]
+            $PhysicalGwVMName=$args[1]
+            $BgpPeer=$args[2]
+
+            icm -VMName $PhysicalGwVMName -Credential $cred 
+            {
+                $BgpPeer=$args[0]
+                Get-BgpPeer | Set-BgpPeer -PeerIpAddress $BgpPeer
+            } -ArgumentList $BgpPeer
+    
+        } -ArgumentList $cred, $PhysicalGwVMName, $BgpPeer
+    }
+
+}

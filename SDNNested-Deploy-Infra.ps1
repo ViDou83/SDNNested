@@ -218,9 +218,14 @@ catch { }
 if ( ($null -eq $MgmtNetIpAddr) -or ($MgmtNetIpAddr -ne $AzureVmSDNIp)) {
     Write-Host -ForegroundColor Green "Adding Ip address/mask $($configdata.AzureVmSDNMgmtIP) on AzureVM : $env:COMPUTERNAME"
     $MgmtNetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $AzureVmSDNIp -PrefixLength $AzureVmSDNMask | Out-Null
-    $MgmtNetAdapter | Set-DnsClientServerAddress -ServerAddresses $($configdata.ManagementDNS)[0] | Out-Null
-
+    Write-Host -ForegroundColor Green "Adding DNS $($configdata.ManagementDNSP) on AzureVM:$env:COMPUTERNAME NetAdapter:$($MgmtNetAdapter.Name)"
+    $MgmtNetAdapter | Set-DnsClientServerAddress -ServerAddresses $configdata.ManagementDNS | Out-Null
 }
+
+#
+
+Write-Host -ForegroundColor Green "Adding Ip Route to reach SDN VIP pool $($configdata.PublicVIPNet)"
+New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $configdata.PublicVIPNet -NextHop $configdata.ManagementGateway -InterfaceIndex $MgmtNetAdapter.InterfaceIndex
 
 $MgmtVNIC | Set-VMNetworkAdapterVlan -Access -VlanId $configdata.ManagementVLANID
 
@@ -404,7 +409,7 @@ Invoke-Command -VMName $configdata.HyperVHosts[0].ComputerName  -Credential $Dom
     $AzureVMName = $args[0]; $Cred = $args[1]
     New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$AzureVMName\Template"  -Credential $Cred -Persistent $true
 
-    Write-Host -ForegroundColor Green "Configuring WMI over HTTPS and certificate authentication on $env:COMPUTERNAME"
+    #Write-Host -ForegroundColor Green "Configuring WMI over HTTPS and certificate authentication on $env:COMPUTERNAME"
     <#
     Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
     $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match "NCFABRIC.SDN.LAB" }).Thumbprint
@@ -482,10 +487,10 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
                             Write-Host -ForegroundColor Yellow "IP Address $($TenantvGW.GrePeer) is missing so adding it"
                             New-NetIPAddress -InterfaceIndex (Get-NetAdapter).ifIndex -IPAddress $TenantvGW.GrePeer -PrefixLength 32 | Out-Null
                         }
-                        $GrepVIPPool = @()
-                        for ($i = 0; $i -lt 255; $i++) { $GrepVIPPool += "192.168.0.$i" }
+                        $GrepVIPPool = "2.2.2.2"
+                        
                         Add-VpnS2SInterface -Name FabrikamGRE -Destination $GrepVIPPool -SourceIpAddress $TenantvGW.GrePeer -GreKey $TenantvGW.PSK `
-                            -GreTunnel -IPv4Subnet "0.0.0.0/0:10"
+                            -GreTunnel -IPv4Subnet "$($TenantvGW.RouteDstPrefix):10"
                     }
                 }
                 # 

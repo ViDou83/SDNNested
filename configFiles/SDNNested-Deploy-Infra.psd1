@@ -144,7 +144,7 @@
 
     SwitchName           = "SDN"
 
-
+    PublicVIPNet         = "41.40.40.0/27"
 
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''

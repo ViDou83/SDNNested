@@ -495,6 +495,9 @@ New-NetworkControllerNetworkInterface -ResourceId $nic2.ResourceId -Properties $
 $NetConn = Get-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
 $NetConn  | %{ Remove-NetworkControllerNetworkInterface -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force}
 
+$Lb = Get-NetworkControllerLoadBalancer -ConnectionUri https://NCFABRIC.SDN.LAB   | ? ResourceId -Match "Contoso|Fabrikam"
+$Lb  | %{ Remove-NetworkControllerLoadBalancer -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force}
+
 $vgw = Get-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB
 $vgw | %{ Remove-NetworkControllerVirtualGateway -ConnectionUri https://NCFABRIC.SDN.LAB -ResourceId $_.ResourceId -Force }
 

@@ -148,7 +148,7 @@
         @{
             Tenant              = "Fabrikam"
             Name                = 'Fabrikam-WebRainbow'
-            VIP                 = "41.40.40.8"
+            VIP                 = "41.40.40.9"
             VIPAllocationMethod = "static" 
             FrontendPort        = 80
             BackendPort         = 80

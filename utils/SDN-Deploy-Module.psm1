@@ -363,7 +363,7 @@ function New-SDNS2DCluster {
         Write-Verbose "Creating Cluster: SDNCLUSTER"
         Import-Module FailoverClusters 
 
-        Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"
+        #Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"
 
         # Create Cluster
         New-Cluster -Name $ClusterName -Node $ClusterNodes -StaticAddress $ClusterIP -NoStorage | Out-Null
