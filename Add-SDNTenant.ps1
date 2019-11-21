@@ -43,7 +43,6 @@ if ($configdata.ScriptVersion -ne $scriptversion) {
 }
 
 #Get credentials for provisionning
-
 $DomainJoinCredential = GetCred $ConfigData.DomainJoinSecurePassword $DomainJoinCredential `
     "Enter credentials for joining VMs to the AD domain." $configdata.DomainJoinUserName
 $LocalAdminCredential = GetCred $ConfigData.LocalAdminSecurePassword $LocalAdminCredential `
@@ -503,8 +502,8 @@ winrm set winrm/config/client '@{TrustedHosts="*"}'
 try{
     $configdataAZVM = [hashtable] (iex (gc .\configFiles\AzureVM.psd1 | out-string))
     $configdataInfra = [hashtable] (iex (gc .\configFiles\AzureVM.psd1| out-string))
-}catch {}
-throw{ "Cannot get AzureVM.psd1 and AzureVM.psd1" }
+}catch {} 
+#throw{ "Cannot get AzureVM.psd1 and AzureVM.psd1" }
 
 foreach( $Tenant in $configdata.Tenants) 
 { 
@@ -519,12 +518,11 @@ foreach( $Tenant in $configdata.Tenants)
         Write-host -ForegroundColor yellow "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
         if ( $GreDestination)
         {
-            icm -ComputerName $configdataAZVM.VMName -Credential $configdataAZVM.VMLocalAdminUser 
+            icm -Computername $configdataAZVM.VMName  -Credential $configdataAZVM.VMLocalAdminUser
             { 
                 $cred=$args[0]
                 $PhysicalGwVMName=$args[1]
                 $GreDestination=$args[2]
-
                 icm -VMName $PhysicalGwVMName -Credential $cred 
                 {
                     $GreDestination=$args[0]
@@ -542,8 +540,7 @@ foreach( $Tenant in $configdata.Tenants)
     if( $BgpPeer)
     {
         Write-host -ForegroundColor yellow "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
-
-        icm -ComputerName $configdataAZVM.VMName -Credential $configdataAZVM.VMLocalAdminUser 
+        icm -Computername $configdataAZVM.VMName  -Credential $configdataAZVM.VMLocalAdminUser
         { 
             $cred=$args[0]
             $PhysicalGwVMName=$args[1]
