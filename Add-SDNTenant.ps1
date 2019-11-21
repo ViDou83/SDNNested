@@ -420,22 +420,6 @@ foreach ($TenantVM in $configdata.TenantVMs) {
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-<#
-        Invoke-Command -VMName $TenantVM.Name -Credential $cred {
-            $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
-            $index = Get-Random -Minimum 0 -Maximum 8
-            mv C:\inetpub\wwwroot\iisstart.htm C:\inetpub\wwwroot\iisstart.htm.old -Force
-            $background = $colors[$index]
-            $content = @"
-<html>
-<body bgcolor="$background">
-<h1>$env:computername</h1>
-</body>
-</html>
-"@
-            Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
-        }
-  #>
 
     } -ArgumentList $TenantVM, $vm, $uri, $cred
 
@@ -446,7 +430,7 @@ foreach ($vip in $configdata.SlbVIPs) {
     $vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId "PublicVIP"
     $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
 
-    $lbresourceId = "LB_$($vip.Tenant)_$($vip.Replace('.','_'))"
+    $lbresourceId = "LB_$($vip.Tenant)_$($vip.VIP.Replace('.','_'))"
     # Create a front-end IP configuration
 
     $FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
@@ -485,7 +469,8 @@ foreach ($vip in $configdata.SlbVIPs) {
 
     foreach ($vm in $vip.TenantVMs) {
         $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_IP1"
-        if ($nic) {
+        if ($nic) 
+        {
             $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
             New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
                 -ConnectionUri $uri -Force 
@@ -501,9 +486,9 @@ winrm set winrm/config/client '@{TrustedHosts="*"}'
 
 try{
     $configdataAZVM = [hashtable] (iex (gc .\configFiles\AzureVM.psd1 | out-string))
-    $configdataInfra = [hashtable] (iex (gc .\configFiles\AzureVM.psd1| out-string))
 }catch {} 
-#throw{ "Cannot get AzureVM.psd1 and AzureVM.psd1" }
+
+$AzCred = Get-Credential $configdataAZVM.VMLocalAdminUser
 
 foreach( $Tenant in $configdata.Tenants) 
 { 
@@ -518,13 +503,11 @@ foreach( $Tenant in $configdata.Tenants)
         Write-host -ForegroundColor yellow "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
         if ( $GreDestination)
         {
-            icm -Computername $configdataAZVM.VMName  -Credential $configdataAZVM.VMLocalAdminUser
-            { 
+            Invoke-Command  -Computername $configdataAZVM.VMName  -Credential $AzCred {
                 $cred=$args[0]
                 $PhysicalGwVMName=$args[1]
                 $GreDestination=$args[2]
-                icm -VMName $PhysicalGwVMName -Credential $cred 
-                {
+                Invoke-Command  -VMName $PhysicalGwVMName -Credential $cred {
                     $GreDestination=$args[0]
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -Destination $GreDestination
@@ -540,16 +523,21 @@ foreach( $Tenant in $configdata.Tenants)
     if( $BgpPeer)
     {
         Write-host -ForegroundColor yellow "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
-        icm -Computername $configdataAZVM.VMName  -Credential $configdataAZVM.VMLocalAdminUser
-        { 
+        Invoke-Command  -Computername $configdataAZVM.VMName  -Credential $AzCred { 
             $cred=$args[0]
             $PhysicalGwVMName=$args[1]
             $BgpPeer=$args[2]
 
-            icm -VMName $PhysicalGwVMName -Credential $cred 
-            {
+            Invoke-Command -VMName $PhysicalGwVMName -Credential $cred {
                 $BgpPeer=$args[0]
                 Get-BgpPeer | Set-BgpPeer -PeerIpAddress $BgpPeer
+                $LocalBgpIP = (Get-BgpPeer).LocalIPAddress
+                
+                if( $null -eq (Get-NetIPAddress | ? IPAddress -Match $LocalBgpIP))
+                {
+                    Get-NetAdapter | New-NetIPAddress -IPAddress $LocalBgpIP -PrefixLength 24
+                } 
+
             } -ArgumentList $BgpPeer
     
         } -ArgumentList $cred, $PhysicalGwVMName, $BgpPeer

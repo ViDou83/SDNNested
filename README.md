@@ -20,7 +20,7 @@ On the SDN-HOST Hypv Server (2nd level of Nested virtualization ):
 
 IP subnets and VLAN:
 - MGMT 10.184.108.0/24 - VLAN 7
-- PROVIDER 10.10.56.0/22 - VLAN 11
+- PROVIDER 10.10.56.0/23 - VLAN 11
 - CONTOSO L3 INTERCO 10.127.134.0/25 - VLAN 1001
 - CONTOSO and FABRIKAM SUBNET : 172.16.1.0/24 
     *  Contoso-testVM01 - 172.16.1.10/24
@@ -29,15 +29,15 @@ IP subnets and VLAN:
     *  Fabrikam-testVM02 - 172.16.1.10/24
 
 On the Azure VM itself:
-* WAC is installed https://localhost to manage S2D cluster and SDN stack
-* Wireshark is installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance)
+* WAC can be installed to manage S2D cluster and SDN stack (see C:\apps)
+* Wireshark can be installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance). (see C:\apps)
 
 ## Usage
 *   Deploy Azure VM :
     *   Use New-AzureSDNNested.ps1 script, run it from a machine with access to your Azure Subscription. Config file is AzureVM.psd1 to define :
         *   Subscription, ResourceGroupName, VMName, VMSize and so on see  AzureVM.psd1 provided    
 *   Deploy 1st level of Nested virtualization :
-    *   Use SDNNested-Deploy-Infra.ps1 script, run it from the Azure VM itself. Config file is SDNNested-Deploy-Infra.psd1 and can fully customized. PREREQUISITES : You need to VHDX generelazied hosted on the AzureVM. 
+    *   Use New-SDNNestedInfra.ps1 script, run it from the Azure VM itself. Config file is SDNNested-Deploy-Infra.psd1 and can be fully customized. PREREQUISITES : You need to have VHDX generelazied hosted on the AzureVM. 
 *   2nd level of Nested virtualization 
     *   Use SDNExpress script, please copy to one of SDN-HOST VM and run it locally from this host (not from a PS Session but through VM Console). You can use either the one located here, you can get the latest one from :
         https://github.com/grcusanz/SDN/tree/master/SDNExpress/scripts (not stable)

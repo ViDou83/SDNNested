@@ -148,6 +148,8 @@ Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -VMName $VMName -Scr
 
 Remove-Item $env:temp\injectedscript.ps1
 
+winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
+
 while ((Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential { $env:COMPUTERNAME } `
             -ea SilentlyContinue) -ne $VMName) { Start-Sleep -Seconds 1 }  
 
@@ -197,7 +199,7 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     }
 
     if ( Test-Path "Z:\apps") {
-        cp Z:\apps C: -Recurse 
+        cp Z:\apps C:\ -Recurse 
     }
 
     Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
