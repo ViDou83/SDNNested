@@ -32,6 +32,9 @@ On the Azure VM itself:
 * WAC can be installed to manage S2D cluster and SDN stack (see C:\apps)
 * Wireshark can be installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance). (see C:\apps)
 
+![ScreenShot](https://raw.github.com/ViDou83/SDNNested/utils/diagram.jpg)
+
+
 ## Usage
 *   Deploy Azure VM :
     *   Use New-AzureSDNNested.ps1 script, run it from a machine with access to your Azure Subscription. Config file is AzureVM.psd1 to define :
@@ -42,6 +45,8 @@ On the Azure VM itself:
     *   Use SDNExpress script, please copy to one of SDN-HOST VM and run it locally from this host (not from a PS Session but through VM Console). You can use either the one located here, you can get the latest one from :
         https://github.com/grcusanz/SDN/tree/master/SDNExpress/scripts (not stable)
         https://github.com/microsoft/SDN/tree/master/SDNExpress/scripts(stable but not compatible with S2D)
+
+
 
 ## Contributing
 Please reach vidou@microsoft.com for any feedback or question.

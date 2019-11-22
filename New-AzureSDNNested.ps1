@@ -203,6 +203,9 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     }
 
     Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
+   
+    Set-VMHost -EnableEnhancedSessionMode $true
+
 } -ArgumentList $configdata
 
 <#
