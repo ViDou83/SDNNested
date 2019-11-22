@@ -27,6 +27,9 @@ IP subnets and VLAN:
     *  Contoso-testVM02 - 172.16.1.10/24
     *  Fabrikam-testVM01 - 172.16.1.10/24
     *  Fabrikam-testVM02 - 172.16.1.10/24
+- Public VIP which can be reached from AzVM 
+    * 41.40.40.8 -> CONTOSO
+    * 41.40.40.9 -> FABRIKAM
 
 On the Azure VM itself:
 * WAC can be installed to manage S2D cluster and SDN stack (see C:\apps)
