@@ -35,8 +35,8 @@ On the Azure VM itself:
 * WAC can be installed to manage S2D cluster and SDN stack (see C:\apps)
 * Wireshark can be installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance). (see C:\apps)
 
-![image](https://github.com/ViDou83/SDNNested/blob/master/utils/diagram.jpg?raw=true)
-![image](https://github.com/ViDou83/SDNNested/blob/master/utils/legende.jpg?raw=true)
+![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
+![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
 
 
 ## Usage
