@@ -421,6 +421,9 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
 
+        Write-Host -ForegroundColor Green  "Adding VM=$($TenantVM.Name) to the failover cluster"
+        Get-VM  $TenantVM.Name | Add-ClusterVirtualMachineRole
+
     } -ArgumentList $TenantVM, $vm, $uri, $cred
 
 }
@@ -488,7 +491,14 @@ try{
     $configdataAZVM = [hashtable] (iex (gc .\configFiles\AzureVM.psd1 | out-string))
 }catch {} 
 
-$AzCred = Get-Credential $configdataAZVM.VMLocalAdminUser
+
+if ($configdataAZVM.VMLocalAdminSecurePassword){
+    $secpasswd = ConvertTo-SecureString $configdataAZVM.VMLocalAdminSecurePassword -AsPlainText -Force
+    $AzCred = New-Object System.Management.Automation.PSCredential($configdataAZVM.VMLocalAdminUser,$secpasswd)
+}
+else{
+    $AzCred = Get-Credential $configdataAZVM.VMLocalAdminUser
+}
 
 foreach( $Tenant in $configdata.Tenants) 
 { 

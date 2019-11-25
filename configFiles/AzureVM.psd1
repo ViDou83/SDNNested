@@ -6,7 +6,7 @@
     VMSize                     = "Standard_E8_v3"
     VMName                     = "SDN-11212019"
     VMLocalAdminUser           = "vidou"
-    VMLocalAdminSecurePassword = "Azertyuiop!01" 
+    #VMLocalAdminSecurePassword = "ChangePassword" 
     ## Azure Account
     LocationName               = "FranceCentral"
     ResourceGroupName          = "RG-AZ-FRANCE"
@@ -24,9 +24,9 @@
     DiskNumber                 = 8
     DiskSizeGB                 = 128
     vDiskDriveLetter            = 'F'
-    AZFileShare     = "\\microrgsrvnewv092310260.file.core.windows.net\sdntemplate"
-    AZFileUser      = "Azure\microrgsrvnewv092310260"
-    AZFilePwd       = "w78qJNa3j46hmXpDY+D6DL0286n/5s+ePP3swCvNNX3KR28gDZCA3OBadKb3XUX+whNkP3m2mEmVV+FQ9HEThA=="
+    #AZFileShare     = "\\microrgsrvnewv092310260.file.core.windows.net\sdntemplate"
+    #AZFileUser      = "Azure\microrgsrvnewv092310260"
+    #AZFilePwd       = "YouPassword"
 }
 
 
