@@ -204,14 +204,9 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
 
     Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
    
-    Set-VMHost -EnableEnhancedSessionMode $true
+    #Set-VMHost -EnableEnhancedSessionMode $true
 
 } -ArgumentList $configdata
-
-<#
-cmdkey /add:microrgsrvnewv092310260.file.core.windows.net /user:Azure\microrgsrvnewv092310260 /pass:w78qJNa3j46hmXpDY+D6DL0286n/5s+ePP3swCvNNX3KR28gDZCA3OBadKb3XUX+whNkP3m2mEmVV+FQ9HEThA==
-net use Z: \\microrgsrvnewv092310260.file.core.windows.net\sdntemplate / persistent:Yes
-#>
 
 Write-Host -ForegroundColor Green "AZ VM $VMName is running and can be RDP on $($PIP.DnsSettings.Fqdn)"
 Write-Host "mstsc /v:$($PIP.DnsSettings.Fqdn)"
