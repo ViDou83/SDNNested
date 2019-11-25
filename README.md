@@ -4,7 +4,7 @@ SDNNested is a collection of PS Script that automates the Microsoft SDN deployme
 ## Infrastucture deployed with provided config files
 
 Azure VM can be manually deployed or you can use the script:
-* .\New-AzureSDNNested.ps1 -ConfigurationDataFile .\configfiles\AzureVM.psd1
+* .\New-SDNNestedAzHost.ps1 -ConfigurationDataFile .\configfiles\SDNNestedAzHost.psd1
 
 Azure VM acting as Hypv Server (1st level of Nested virtualization )
 * One DC acting as ToR Router (router between SDN Stack and outside)
@@ -41,8 +41,13 @@ On the Azure VM itself:
 
 ## Usage
 *   Deploy Azure VM :
-    *   Use New-AzureSDNNested.ps1 script, run it from a machine with access to your Azure Subscription. Config file is AzureVM.psd1 to define :
-        *   Subscription, ResourceGroupName, VMName, VMSize and so on see  AzureVM.psd1 provided    
+    *   Use New-SDNNestedAzHost.ps1 script, run it from a machine with access to your Azure Subscription. Config file is AzureVM.psd1 to define :
+        *   Subscription, ResourceGroupName, VMName, VMSize, VM username and  Password, AzFileShare where VHDX and misc apps/tools can be hosted
+        *  Ex: .\New-SDNNestedAzHost.ps1 -ConfigurationDataFile .\configfiles\SDNNestedAzHost.psd1
+        * AzFile share folder tree has to be 
+            * \\AzFileShare\Template => contains sysprered vhdx (Name has to the one used).
+            * \\AzFileShare\Apps => put what you want...
+            *  Template folder will be replicated on the AzVM F:\VMs Drive and App under C:\
 *   Deploy 1st level of Nested virtualization :
     *   Use New-SDNNestedInfra.ps1 script, run it from the Azure VM itself. Config file is SDNNested-Deploy-Infra.psd1 and can be fully customized. PREREQUISITES : You need to have VHDX generelazied hosted on the AzureVM. 
 *   2nd level of Nested virtualization 
@@ -50,7 +55,14 @@ On the Azure VM itself:
         https://github.com/grcusanz/SDN/tree/master/SDNExpress/scripts (not stable)
         https://github.com/microsoft/SDN/tree/master/SDNExpress/scripts(stable but not compatible with S2D)
 
-
+    * Use script Add-SDNNestedTenant.ps1 script to use tenant on the SDN stack:
+        * Ex: Add-SDNNestedTenant.ps1 -ConfigurationDataFile .\configfiles\SDNNesterd-Deploy-Tenant.psd1 
+        * This script will deploy Contoso and Fabrikam Tenants with virtual gateways and VIP
+            * Contoso Gw is using L3 interconnection
+            * Fabrikam Gw is using GRE tunelling 
+        * Public VIP which can be reached from AzVM, 
+            * http://41.40.40.8 -> CONTOSO
+            * https//41.40.40.9 -> FABRIK
 
 ## Contributing
 Please reach vidou@microsoft.com for any feedback or question.
