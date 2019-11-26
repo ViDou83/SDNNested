@@ -56,12 +56,14 @@
     @(
         @{
             ComputerName = 'SDN-HOST01'; 
+            VMMemory     = 26GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
         },   
         @{
             ComputerName = 'SDN-HOST02'; 
+            VMMemory     = 24GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   

@@ -323,7 +323,7 @@ Write-Host "--- Start Hypv hosts deployment "
 foreach ( $node in $configdata.HyperVHosts) {
     $paramsHOST.VMName = $node.ComputerName
     $paramsHOST.Nics = $node.NICs
-    $paramsHOST.VMMemory = 24GB
+    $paramsHOST.VMMemory =  $node.VMMemory
     $paramsHOST.VMProcessorCount = 4
 
     Write-Host -ForegroundColor Green "Step 1 - Creating Host VM $($node.ComputerName)" 
