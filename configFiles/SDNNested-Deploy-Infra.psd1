@@ -49,6 +49,10 @@
                 @{  Name = "SDN-GW01"; PeerIPAddress = '10.10.56.8'; },
                 @{  Name = "SDN-GW02"; PeerIPAddress = '10.10.56.9'; };
             )
+
+            StaticRoutes = @(
+                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; }
+            )
         }
     )
 

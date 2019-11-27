@@ -56,7 +56,7 @@ On the Azure VM itself:
         https://github.com/microsoft/SDN/tree/master/SDNExpress/scripts(stable but not compatible with S2D)
 
     * Use script Add-SDNNestedTenant.ps1 script to use tenant on the SDN stack:
-        * Ex: Add-SDNNestedTenant.ps1 -ConfigurationDataFile .\configfiles\SDNNesterd-Deploy-Tenant.psd1 
+        * Ex: Add-SDNNestedTenant.ps1 -ConfigurationDataFile .\configfiles\SDNNested-Deploy-Tenant.psd1 
         * This script will deploy Contoso and Fabrikam Tenants with virtual gateways and VIP
             * Contoso Gw is using L3 interconnection
             * Fabrikam Gw is using GRE tunelling 

@@ -298,7 +298,28 @@ foreach ( $dc in $configdata.DCs) {
             Add-BgpPeer -Name $BgpPeer.Name -LocalIPAddress $configdata.TORrouter.BgpRouter.RouterIPAddress -PeerIPAddress $BgpPeer.PeerIPAddress `
                 -PeerASN $configdata.TORrouter.SDNASN -OperationMode Mixed -PeeringMode Automatic 
         }
-    
+
+        $LocalIPs=(Get-NetAdapter | Get-NetIPAddress -AddressFamily IPv4).IPAddress
+
+        foreach ( $route in $configdata.TORrouter.StaticRoutes ) {
+            Write-host -ForegroundColor Yellow "Adding Static routes $($route.Route) via $($route.NextHop)"
+            $NextHopSplit = $($route.NextHop).split(".")
+            foreach ( $LocalIP in $LocalIPs)
+            {
+                $LocalIPSplit = $LocalIP.Split(".")
+                for($i=0;$i -lt 4;$i++){
+                    if ($LocalIPSplit[$i] -ne $NextHopSplit[$i]){
+                        break;
+                    }
+                }
+                $i
+                if($i -eq 3)
+                {
+                    $ifIndex = (Get-NetAdapter | Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -eq $LocalIP).InterfaceIndex
+                    New-NetRoute -DestinationPrefix $route.NextHop -NextHop $route.NextHop -ifIndex $ifIndes
+                }
+            }
+        }
     } -ArgumentList $configdata
 
 

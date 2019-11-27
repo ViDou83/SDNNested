@@ -488,15 +488,14 @@ foreach ($vip in $configdata.SlbVIPs) {
 winrm set winrm/config/client '@{TrustedHosts="*"}'
 
 try{
-    $configdataAZVM = [hashtable] (iex (gc .\configFiles\AzureVM.psd1 | out-string))
+    $configdataAZVM = [hashtable] (iex (gc .\configFiles\SDNNestedAzHost.psd1 | out-string))
 }catch {} 
 
 
 if ($configdataAZVM.VMLocalAdminSecurePassword){
     $secpasswd = ConvertTo-SecureString $configdataAZVM.VMLocalAdminSecurePassword -AsPlainText -Force
     $AzCred = New-Object System.Management.Automation.PSCredential($configdataAZVM.VMLocalAdminUser,$secpasswd)
-}
-else{
+}else{
     $AzCred = Get-Credential $configdataAZVM.VMLocalAdminUser
 }
 
