@@ -251,8 +251,8 @@ function New-SdnVM() {
     }
 
     Write-Host "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
-    Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
-    
+    Start-BitsTransfer -Source $VHDTemplateFile -Destination "$CurrentVMLocationPath\$VHDName" -DisplayName "VHDX File Copy" -Description "Copy VHDX file from template location to VM location"
+    #Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
     $params = @{
         'VHD'                = "$CurrentVMLocationPath\$VHDName";
         'ProductKey'         = $ProductKey;
