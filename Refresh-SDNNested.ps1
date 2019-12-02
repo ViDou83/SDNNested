@@ -43,14 +43,19 @@ foreach ( $node in $Nodes) {
         #Enable  Enhanced more everywhere
         Set-VMHost -EnableEnhancedSessionMode $true
 
-        $RestName = (Get-ItemProperty "hklm:\system\currentcontrolset\services\nchostagent\parameters" -Name PeerCertificateCName).PeerCertificateCName
-        Write-Host -ForegroundColor Yellow "Allowing WinRM with certificate authentication between $env:COMPUTERNAME and $RestName"
-
-        Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
-        $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match $RestName }).Thumbprint
-        New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCthumbprint -Credential $cred -force
         $Mythumbprint = (Get-ChildItem Cert:\LocalMachine\My | ? { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
-        New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
+
+        if (  ! (winrm enumerate winrm/config/listener | findstr $Mythumbprint) ){
+
+            $RestName = (Get-ItemProperty "hklm:\system\currentcontrolset\services\nchostagent\parameters" -Name PeerCertificateCName).PeerCertificateCName
+            Write-Host -ForegroundColor Yellow "Allowing WinRM with certificate authentication between $env:COMPUTERNAME and $RestName"
+
+            Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
+            $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match $RestName }).Thumbprint
+            New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCthumbprint -Credential $cred -force
+            #$Mythumbprint = (Get-ChildItem Cert:\LocalMachine\My | ? { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
+            New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
+        }
 
         #Restart and fixing NcHostAgent,SblHostAgent, SBLMux service issue
         Get-Service  NcHostAgent,SlbHostAgent | Restart-Service -Force
@@ -61,7 +66,11 @@ foreach ( $node in $Nodes) {
         }
 
         #Adding all VMs to cluster 
-        Get-VM | Add-ClusterVirtualMachineRole
+        $VMids =  (get-vm).VMId
+        foreach( $VMid in $VMids)
+        { 
+            if ( ! (Get-ClusterResource -VMId $VMid) ){  Get-VM -VMId $VMid Add-ClusterVirtualMachineRole } 
+        }
 
     } -ArgumentList $LocalAdminCredential, $DomainJoinCredential
     

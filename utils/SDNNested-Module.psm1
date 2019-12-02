@@ -147,7 +147,7 @@ function Add-UnattendFileToVHD {
     }
 
     if ( $ComputerName -match "GW"){
-        $DomainAccount = $null
+        $UnattendedDomainAccount = $null
     }
 
     $UnattendFile = @"
@@ -219,7 +219,7 @@ function Add-UnattendFileToVHD {
     Remove-Item $MountPath -Recurse -Force
 }
     
-function New-SdnVM() {
+function New-SdnNestedVm() {
     param(
         [String] $VMLocation,
         [String] $VMName,
@@ -268,6 +268,7 @@ function New-SdnVM() {
         'NICS'               = $Nics;
     }
 
+    #Preparing Unatting process => building unattend.xml file
     Add-UnattendFileToVHD @params
     
     if ( Test-Path $CurrentVMLocationPath) {
@@ -279,17 +280,135 @@ function New-SdnVM() {
         $NewVM | Set-VM -processorcount $VMProcessorCount | out-null
 
         for ( $i = 0; $i -lt $Nics.count; $i++ ) {
-            if ( $i -gt 0) {
+            if ( $i -gt 0) 
+            {
                 $NewVM | Add-VMNetworkAdapter -SwitchName $SwitchName
                 $vmNIC = ($NewVM | Get-VMNetworkAdapter)[-1]
                 $vmNIC | Set-VMNetworkAdapterVlan -Access -VlanId $Nics[0].VLANID            
             }
-            else { 
+            else 
+            { 
                 #Hard to predict how PNP manager is enumerating NIC so set MGTM vLAN ID to all vNICS
                 $NewVM | Get-VMNetworkAdapter | Set-VMNetworkAdapterVlan -Access -VlanId $Nics[0].VLANID            
             }
         }
     } 
+}
+
+function New-ToRRouter()
+{
+    param(
+        [String] $VMName,
+        [PSCredential] $credential,
+        [hashtable] $TORrouter
+    )
+
+    #Adding RRAS and BGP config
+    Invoke-Command -VMName $VMName -Credential $credential { 
+        $TORrouter = $args[0]
+        
+        #Case where the VM is DC
+        if ( get-service DNS )
+        {
+            #Removing DNS registration on 2nd adapter
+            Write-host -ForegroundColor Green "Configuring DNS server to only listening on mgmt NIC"   
+            Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
+            #Get-NetAdapter "Ethernet 2" | Set-DnsClientServerAddress -ServerAddresses "" 
+            ipconfig /registerdns
+            dnscmd /ResetListenAddresses "$($configdata.ManagementDNS)"
+            Restart-Service DNS
+        }
+
+        Write-host -ForegroundColor Green "Installing RemoteAccess on vm $env:COMPUTERNAME to act as TOR Router"   
+        Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools
+        Install-RemoteAccess -VpnType RoutingOnly
+
+        Write-host -ForegroundColor Yellow "Configuring $env:COMPUTERNAME as TOR router" 
+        Write-host -ForegroundColor Yellow "Configuring BGP router and BGP peers on $env:COMPUTERNAME"   
+
+        Add-BgpRouter -BgpIdentifier $TORrouter.BgpRouter.RouterIPAddress -LocalASN $TORrouter.BgpRouter.RouterASN
+        
+        foreach ( $BgpPeer in $TORrouter.BgpPeers ) 
+        {
+            Add-BgpPeer -Name $BgpPeer.Name -LocalIPAddress $TORrouter.BgpRouter.RouterIPAddress -PeerIPAddress $BgpPeer.PeerIPAddress `
+                -PeerASN $TORrouter.SDNASN -OperationMode Mixed -PeeringMode Automatic 
+        }
+
+        foreach ( $route in $TORrouter.StaticRoutes ) {
+            Write-host -ForegroundColor Yellow "Adding Static routes $($route.Route) via $($route.NextHop)"
+            $NextHopSplit = $($route.NextHop).split(".")
+     
+            $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
+
+            if ( $ifIndex ){
+                Write-host -ForegroundColor Green "Adding Static route Dst=$($route.Destination) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+                New-NetRoute -DestinationPrefix $route.Destination -NextHop $route.NextHop -ifIndex $ifIndex
+            }
+            else { 
+                Write-host -ForegroundColor RED "ERROR: Failded to add Static route Dst=$($route.Destination) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+            }
+        }
+    } -ArgumentList $TORrouter
+}
+
+function Add-vNicIpConfig(){
+    
+    param(
+        [psobject] $vNIC,
+        [hashtable] $NetConfig
+    )
+
+    $NetAdapter = Get-NetAdapter | ? Name -Match $vNIC.Name
+
+    $IpAddr = $NetConfig.IpAddress.split("/")[0]
+    $PrefixLength = $NetConfig.IpAddress.split("/")[1]
+
+    $vNIC
+
+    $NetAdapter
+
+    if( $NetAdapter)
+    {
+        Write-Host "Configure Ip address/mask=$IpAddr/$PrefixLength vNic=$($vNIC.Name) Host=$env:COMPUTERNAME"
+        $NetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $IpAddr -PrefixLength $PrefixLength 
+        Write-Host "Configure DNS $($NetConfig.DNS) NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
+        $NetAdapter | Set-DnsClientServerAddress -ServerAddresses $NetConfig.DNS
+    }
+    else { Write-Host -ForegroundColor Red "ERROR: Failed to configure IpConfig and DNS vNIC=$($vNIC.Name) Host=$env:COMPUTERNAME" }
+
+    Write-Host  "Configuring VLAN vNic=$($vNIC.Name) VLANID=$($NetConfig.VLANID) Host=$env:COMPUTERNAME"
+    $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NetConfig.VLANID
+
+
+}
+
+
+function Connect-HostToSDN()
+{
+    param(
+        [array] $NICs,
+        [String] $VMswitch,
+        [hashtable] $NetRoute
+    )
+
+    foreach($NIC in $NICs)
+    {
+        $vNIC = Add-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch        
+        if( $vNIC ) 
+        { 
+            Write-Host "Adding vNIC=$($NIC.Name) on Host=$env:COMPUTERNAME"
+            Add-vNicIpConfig $vNIC $NIC
+        }
+    }
+
+    $NextHopSplit = $($NetRoute.NextHop).split(".")
+    $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
+
+    if ( $ifIndex){
+        New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex
+        Write-Host -ForegroundColor Green "NetRoute on $env:computername to reach SDN VIP pool=$($NetRoute.Destination) is added"
+    }
+    else  { Write-Host -ForegroundColor Red "ERROR: NetRoute=$($NetRoute.Destination) on $env:computername to reach SDN VIP has not been added" }
 }
 
 function Add-WindowsFeature() {
@@ -310,6 +429,41 @@ function Add-WindowsFeature() {
     Invoke-Command -VMName $VMName -Credential $credential { Restart-Computer -Force }
 }
 
+<#
+    Promote VM to be a DC using config passed in. If it is the 1st DC, installing Forest 
+#>
+New-SDNNestedDC()
+{
+    param(
+        [String] $VMName,
+        [pscredential] $Credential,
+        [String] $DomainFQDN,
+        [String] $SafeModePwd
+    )
+    
+    $paramsDeployForest = @{
+        DomainName                    = $DomainFQDN
+        DomainMode                    = 'WinThreshold'
+        DomainNetBiosName             = $DomainFQDN.split(".")[0]
+        SafeModeAdministratorPassword = $SafeModePwd
+
+    }
+
+    Invoke-Command -VMName $VMName -Credential $Credential -ScriptBlock {
+        Write-host -ForegroundColor Green "Installing AD-Domain-Services on vm $env:COMPUTERNAME"
+        Install-WindowsFeature -name AD-Domain-Services -IncludeManagementTools | Out-Null
+        
+        $params = @{
+            DomainName                    = $args.DomainName
+            DomainMode                    = $args.DomainMode
+            SafeModeAdministratorPassword = $args.SafeModeAdministratorPassword
+        }
+        Write-host -ForegroundColor Green "Installing ADDSForest on vm $env:COMPUTERNAME"
+        Install-ADDSForest @params -InstallDns -Confirm -Force | Out-Null
+        #
+    } -ArgumentList $paramsDeployForest
+}
+
 function Add-VMDataDisk() {
     param(
         [String] $VMName,
@@ -325,7 +479,6 @@ function Add-VMDataDisk() {
         Add-VMHardDiskDrive -Path "$LocalVMPath\$VMNAme-S2D_Disk$i.vhdx" -VMName $VMName -ControllerType SCSI | Out-Null
     }   
 }
-
 
 function New-SDNS2DCluster {
     param (

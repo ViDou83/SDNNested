@@ -3,6 +3,8 @@
 
     VHDPath              = "F:\VMs\Template"
     VHDFile              = "Win2019-Core.vhdx"
+    
+    VHDGUIFile              = "Win2019-GUI.vhdx"
 
     VMLocation           = "F:\VMs"
     DomainFQDN           = "SDN.LAB"
@@ -17,42 +19,20 @@
 
     AzureVMadmin         = "vidou"
     AzureVMPwd           = "Azertyuiop!01"
-    AzureVmSDNMgmtIP     = "10.184.108.50/24"
+
+    HostSdnNICs     = 
+    @( 
+        @{ Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
+        @{ Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
+    )   
 
     DCs                  = 
     @(
         @{
             ComputerName = 'SDN-DC01'; 
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },
-                @{ Name = "Ethernet 2"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
+                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 }
             )   
-        }
-    )
-
-    TORrouter = 
-    @(
-        @{
-            ComputerName = 'SDN-DC01'; 
-
-            SDNASN       = '64628'
-            BgpRouter      = @(
-                @{
-                    RouterASN       = '64623'
-                    RouterIPAddress = '10.10.56.1'
-                }
-            )
-
-            BgpPeers      = @(
-                @{  Name = "SDN-MUX01"; PeerIPAddress = '10.10.56.6'; },
-                @{  Name = "SDN-MUX02"; PeerIPAddress = '10.10.56.7'; },
-                @{  Name = "SDN-GW01"; PeerIPAddress = '10.10.56.8'; },
-                @{  Name = "SDN-GW02"; PeerIPAddress = '10.10.56.9'; };
-            )
-
-            StaticRoutes = @(
-                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; }
-            )
         }
     )
 
@@ -60,14 +40,14 @@
     @(
         @{
             ComputerName = 'SDN-HOST01'; 
-            VMMemory     = 26GB;
+            VMMemory     = 32GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
         },   
         @{
             ComputerName = 'SDN-HOST02'; 
-            VMMemory     = 24GB;
+            VMMemory     = 32GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -133,6 +113,39 @@
         }
     )
 
+    
+    TORrouter = 
+    @(
+        @{
+            ComputerName = 'SDN-TORGW'; 
+
+            
+            NICs    = @( 
+                            @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
+            )
+
+            SDNASN       = '64628'
+            BgpRouter      = @(
+                @{
+                    RouterASN       = '64623'
+                    RouterIPAddress = '10.10.56.1'
+                }
+            )
+
+            BgpPeers      = @(
+                @{  Name = "SDN-MUX01"; PeerIPAddress = '10.10.56.6'; },
+                @{  Name = "SDN-MUX02"; PeerIPAddress = '10.10.56.7'; },
+                @{  Name = "SDN-GW01"; PeerIPAddress = '10.10.56.8'; },
+                @{  Name = "SDN-GW02"; PeerIPAddress = '10.10.56.9'; };
+            )
+
+            StaticRoutes = @(
+                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; }
+            )
+        }
+    )
+
+
     S2DDiskSize          = 128GB
     S2DDiskNumber        = 3
     S2DClusterIP         = "10.184.108.4"
@@ -150,7 +163,7 @@
 
     SwitchName           = "SDN"
 
-    PublicVIPNet         = "41.40.40.0/27"
+    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.10.56.1"; }
 
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''

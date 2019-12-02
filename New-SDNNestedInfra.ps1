@@ -10,34 +10,15 @@
 # ---------------------------------------------------------------
 <#
 .SYNOPSIS 
-    Deploys and configures the Microsoft SDN infrastructure, 
-    including creation of the network controller, Software Load Balancer MUX 
-    and gateway VMs.  Then the VMs and Hyper-V hosts are configured to be 
-    used by the Network Controller.  When this script completes the SDN 
-    infrastructure is ready to be fully used for workload deployments.
+
 .EXAMPLE
-    .\SDNExpress.ps1 -ConfigurationDataFile .\MyConfig.psd1
-    Reads in the configuration from a PSD1 file that contains a hash table 
-    of settings data.
+
 .EXAMPLE
-    .\SDNExpress -ConfigurationData $MyConfigurationData
-    Uses the hash table that is passed in as the configuration data.  This 
-    parameter set is useful when programatically generating the 
-    configuration data.
+
 .EXAMPLE
-    .\SDNExpress 
-    Displays a user interface for interactively defining the configuraiton 
-    data.  At the end you have the option to save as a configuration file
-    before deploying.
+
 .NOTES
-    Prerequisites:
-    * All Hyper-V hosts must have Hyper-V enabled and the Virtual Switch 
-    already created.
-    * All Hyper-V hosts must be joined to Active Directory.
-    * The physical network must be preconfigured for the necessary subnets and 
-    VLANs as defined in the configuration data.
-    * The VHD specified in the configuration data must be reachable from the 
-    computer where this script is run. 
+
 #>
 
 
@@ -193,148 +174,40 @@ if ( $null -eq $configdata.HyperVHosts ) {
     throw "No Hyper-V Host configuration defined."    
 }
 
-
-#Checking connectivity to the SDN-HOST*
-try {
-    $MgmtVNIC = Get-VMNetworkAdapter -ManagementOS -SwitchName $configdata.SwitchName 
-}
-catch { }
-
-if ($null -eq $MgmtVNIC) { $MgmtVNIC = Add-VMNetworkAdapter -ManagementOS -SwitchName $configdata.SwitchName }
-
-$AzureVmSDNIp = ($configdata.AzureVmSDNMgmtIP).split("/")[0]
-$AzureVmSDNMask = ($configdata.AzureVmSDNMgmtIP).split("/")[1]
-
-try { 
-    $MgmtNetAdapter = Get-NetAdapter -Name  "vEthernet ($($MgmtVNIC.Name))" 
-}
-catch { }
-
-try {
-    $MgmtNetIpAddr = ($MgmtNetAdapter | Get-NetIPAddress -AddressFamily IPv4).IpAddress
-}
-catch { }
-
-if ( ($null -eq $MgmtNetIpAddr) -or ($MgmtNetIpAddr -ne $AzureVmSDNIp)) {
-    Write-Host -ForegroundColor Green "Adding Ip address/mask $($configdata.AzureVmSDNMgmtIP) on AzureVM : $env:COMPUTERNAME"
-    $MgmtNetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $AzureVmSDNIp -PrefixLength $AzureVmSDNMask | Out-Null
-    Write-Host -ForegroundColor Green "Adding DNS $($configdata.ManagementDNSP) on AzureVM:$env:COMPUTERNAME NetAdapter:$($MgmtNetAdapter.Name)"
-    $MgmtNetAdapter | Set-DnsClientServerAddress -ServerAddresses $configdata.ManagementDNS | Out-Null
-}
-
-#
-
-Write-Host -ForegroundColor Green "Adding Ip Route to reach SDN VIP pool $($configdata.PublicVIPNet)"
-New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $configdata.PublicVIPNet -NextHop $configdata.ManagementGateway -InterfaceIndex $MgmtNetAdapter.InterfaceIndex
-
-$MgmtVNIC | Set-VMNetworkAdapterVlan -Access -VlanId $configdata.ManagementVLANID
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "--- Connecting $env:computername to the SDN switch"
+Connect-HostToSDN $configdata.HostSdnNICs $vmswitch.Name $configdata.PublicVIPNetRoute
 
 Write-Host "############"
 Write-Host "########"
 Write-Host "####"
 Write-Host "--- Start Domain controller deployment "
 #Creating DC
-foreach ( $dc in $configdata.DCs) {
+foreach ( $dc in $configdata.DCs) 
+{
     $paramsAD.VMName = $dc.ComputerName
     $paramsAD.Nics = $dc.NICs
-    $paramsAD.VHDName = "Win2019-GUI.vhdx"
+    #Creating DC with Desktop env 
+    $paramsAD.VHDName = $configdata.VHDGUIFile
 
     Write-Host -ForegroundColor Green "Step 1 - Creating DC VM $($dc.ComputerName)" 
-    New-SdnVM @paramsAD 
+    New-SdnNestedVm @paramsAD 
 
     Start-VM $dc.ComputerName
-    Write-host "Wait till the VM $($dc.ComputerName) is not WinRM reachable"
-    while ((Invoke-Command -VMName $dc.ComputerName -Credential $LocalAdminCredential { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $dc.ComputerName) { Start-Sleep -Seconds 1 }
+    Write-host "$($dc.ComputerName) is booting" -NoNewline
+    
+    while ((Invoke-Command -VMName $dc.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
+                -ea SilentlyContinue) -ne $dc.ComputerName) { Start-Sleep -Seconds 1; Write-Host "." -NoNewline }
 
-    $paramsDeployForest = @{
+    New-SDNNestedDC $dc.Compurtename $LocalAdminCredential $configdata.DomainFQDN $LocalAdminPassword
 
-        DomainName                    = $ConfigData.DomainFQDN
-        DomainMode                    = 'WinThreshold'
-        DomainNetBiosName             = ($ConfigData.DomainFQDN).split(".")[0]
-        SafeModeAdministratorPassword = $password
-
-    }
-
-    Invoke-Command -VMName $dc.ComputerName -Credential $LocalAdminCredential -ScriptBlock {
-        Write-host -ForegroundColor Green "Installing AD-Domain-Services on vm $env:COMPUTERNAME"
-        Install-WindowsFeature -name AD-Domain-Services -IncludeManagementTools | Out-Null
-        
-        $params = @{
-            DomainName                    = $args.DomainName
-            DomainMode                    = $args.DomainMode
-            SafeModeAdministratorPassword = $args.SafeModeAdministratorPassword
-        }
-        Write-host -ForegroundColor Green "Installing ADDSForest on vm $env:COMPUTERNAME"
-        Install-ADDSForest @params -InstallDns -Confirm -Force | Out-Null
-        #
-    } -ArgumentList $paramsDeployForest
-
-    #Write-host -ForegroundColor Green "Restarting vm $($dc.computername)"
-    #Restart-VM $dc.ComputerName -Force
-
-    Write-host "Wait till ADDS is totally up and running"
-
-    while ((Invoke-Command -VMName $dc.ComputerName -Credential $DomainJoinCredential { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $dc.ComputerName) { Start-Sleep -Seconds 1 }
-
-
-    Invoke-Command -VMName $dc.ComputerName -Credential $DomainJoinCredential { 
-        $configdata = $args[0]
-        Write-host -ForegroundColor Green "Installing RemoteAccess on vm $env:COMPUTERNAME to act as TOR Router"   
-        Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools
-        Install-RemoteAccess -VpnType RoutingOnly
-        #Removing DNS registration on 2nd adapter
-        Write-host -ForegroundColor Green "Configuring DNS server to only listening on mgmt NIC"   
-        Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
-        #Get-NetAdapter "Ethernet 2" | Set-DnsClientServerAddress -ServerAddresses "" 
-        ipconfig /registerdns
-        dnscmd /ResetListenAddresses "$($configdata.ManagementDNS)"
-        Restart-Service DNS
-        Write-host -ForegroundColor Yellow "Configuring DC as TOR router BGP router and peers" 
-        Write-host -ForegroundColor Yellow "Configuring BGP router and peers"   
-        Add-BgpRouter -BgpIdentifier $configdata.TORrouter.BgpRouter.RouterIPAddress -LocalASN $configdata.TORrouter.BgpRouter.RouterASN
-        foreach ( $BgpPeer in $configdata.TORrouter.BgpPeers ) {
-            Add-BgpPeer -Name $BgpPeer.Name -LocalIPAddress $configdata.TORrouter.BgpRouter.RouterIPAddress -PeerIPAddress $BgpPeer.PeerIPAddress `
-                -PeerASN $configdata.TORrouter.SDNASN -OperationMode Mixed -PeeringMode Automatic 
-        }
-
-        $LocalIPs=(Get-NetAdapter | Get-NetIPAddress -AddressFamily IPv4).IPAddress
-
-        foreach ( $route in $configdata.TORrouter.StaticRoutes ) {
-            Write-host -ForegroundColor Yellow "Adding Static routes $($route.Route) via $($route.NextHop)"
-            $NextHopSplit = $($route.NextHop).split(".")
-            foreach ( $LocalIP in $LocalIPs)
-            {
-                $LocalIPSplit = $LocalIP.Split(".")
-                for($i=0;$i -lt 4;$i++){
-                    if ($LocalIPSplit[$i] -ne $NextHopSplit[$i]){
-                        break;
-                    }
-                }
-                $i
-                if($i -eq 3)
-                {
-                    $ifIndex = (Get-NetAdapter | Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -eq $LocalIP).InterfaceIndex
-                    New-NetRoute -DestinationPrefix $route.NextHop -NextHop $route.NextHop -ifIndex $ifIndes
-                }
-            }
-        }
-    } -ArgumentList $configdata
-
-
-    #Configuring VLAN as now NIC has been enumerated within th DCs VM
-    $VMNics = Get-VM  $dc.ComputerName | Get-VMNetworkAdapter
-    for ( $i = 0; $i -lt $dc.NICs.count; $i++ ) {
-        foreach ($VMNic in $VMNics) {
-            if ( $VMNic.IpAddresses[0] -eq (($dc.NICs[$i]).IPAddress).split("/")[0] ) {
-                $VMNic | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[$i].VLANID            
-            }
-        }
-    }
+    Write-Host  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
+    Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
 }
 
-Start-Sleep 60
+#Start-Sleep 60
 
 Write-Host "############"
 Write-Host "########"
@@ -348,7 +221,7 @@ foreach ( $node in $configdata.HyperVHosts) {
     $paramsHOST.VMProcessorCount = 4
 
     Write-Host -ForegroundColor Green "Step 1 - Creating Host VM $($node.ComputerName)" 
-    New-SdnVM @paramsHOST
+    New-SdnNestedVm @paramsHOST
 
     #required for nested virtualization 
     Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
@@ -361,12 +234,9 @@ foreach ( $node in $configdata.HyperVHosts) {
     Write-Host -ForegroundColor Green  "Step 3 - Starting VM $($node.ComputerName)"
     Start-VM $node.ComputerName 
  
-    Write-Host -ForegroundColor yellow "Waiting till the $($node.computername) is not domain joindd to $($configdata.DomainFQDN)"
-    Start-Sleep 120
-    while ( $( Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential { 
-                (Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain }) -ne $true ) {
-        Start-Sleep 1
-    }
+    Write-Host -ForegroundColor yellow "Waiting till the $($node.computername) is not domain joined to $($configdata.DomainFQDN)"
+    while ( $( Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential  -ErrorAction Ignore { 
+                (Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain }) -ne $true ) { Start-Sleep 1 }
 
     Write-Host -ForegroundColor Green  "Step 4 - Adding required features on VM $($node.ComputerName)"
     Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
@@ -376,8 +246,10 @@ foreach ( $node in $configdata.HyperVHosts) {
     }
 
     Write-host "Wait till the VM $($node.ComputerName) is not WinRM reachable"
-    Start-Sleep 120
-    while ((Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential { $env:COMPUTERNAME } `
+    
+    Start-Sleep 30
+    
+    while ((Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
                 -ea SilentlyContinue) -ne $node.ComputerName) { Start-Sleep -Seconds 1 }  
 
     Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
@@ -390,13 +262,14 @@ foreach ( $node in $configdata.HyperVHosts) {
         Enable-WSManCredSSP -Role Server -Force
         Set-VMHost  -EnableEnhancedSessionMode $true
     } -ArgumentList $Node.NICs[0].VLANID
-    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 7-1001 -NativeVlanId 0
+    
+    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
     #Adding credential to the cache
     Invoke-Expression -Command "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword"
 }
 
-$password = $DomainJoinPassword | ConvertTo-SecureString -asPlainText -Force
-$DomainJoinCredential = New-Object System.Management.Automation.PSCredential($ConfigData.DomainJoinUserName, $password)
+#$password = $DomainJoinPassword | ConvertTo-SecureString -asPlainText -Force
+#$DomainJoinCredential = New-Object System.Management.Automation.PSCredential($ConfigData.DomainJoinUserName, $password)
 
 Start-Sleep 60
 
@@ -430,18 +303,9 @@ Invoke-Command -VMName $configdata.HyperVHosts[0].ComputerName  -Credential $Dom
     $AzureVMName = $args[0]; $Cred = $args[1]
     New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$AzureVMName\Template"  -Credential $Cred -Persistent $true
 
-    #Write-Host -ForegroundColor Green "Configuring WMI over HTTPS and certificate authentication on $env:COMPUTERNAME"
-    <#
-    Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
-    $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match "NCFABRIC.SDN.LAB" }).Thumbprint
-    New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCthumbprint -Credential (Get-Credential)
-    $Mythumbprint = (Get-ChildItem Cert:\LocalMachine\My | ? { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
-    New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
-
-    get-vm | restart-Vm -force 
-#>
     Add-MpPreference -ExclusionExtension "vhd"
     Add-MpPreference -ExclusionExtension "vhdx"
+
 } -ArgumentList $env:COMPUTERNAME, $LocalAzureVMCred
 
 
@@ -456,11 +320,11 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
     $paramsGW.Nics = $GW.NICs
 
     Write-Host -ForegroundColor Green "Step 1 - Creating GW VM $($GW.ComputerName)" 
-    New-SdnVM @paramsGW 
+    New-SdnNestedVm @paramsGW 
 
     Start-VM $GW.ComputerName
     Write-host "Wait till the VM $($GW.ComputerName) is not WinRM reachable"
-    while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential { $env:COMPUTERNAME } `
+    while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
                 -ea SilentlyContinue) -ne $GW.ComputerName) { Start-Sleep -Seconds 1 }
 
     foreach ( $TenantvGW in $configdata.TenantvGWs) {
@@ -478,7 +342,7 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
             
             Sleep 30
 
-            while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential { $env:COMPUTERNAME } `
+            while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
                         -ea SilentlyContinue) -ne $GW.ComputerName) { Start-Sleep -Seconds 1 }
 
             invoke-Command -VMName  $GW.ComputerName  -Credential $LocalAdminCredential {
@@ -545,6 +409,54 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
         }     
     }
 }
+
+#####Move back
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "--- ToR Router deployement "
+#Creating Gw Hosts
+foreach ( $ToR in $configdata.TORrouter) 
+{
+
+    $credential = $DomainJoinCredential
+
+    if ( ! (get-vm $ToR.Compurtername) ){
+        $paramsToR = @{
+            'VMLocation'          = $ConfigData.VMLocation;
+            'VMName'              = $ToR.Compurtename;
+            'VHDSrcPath'          = $ConfigData.VHDPath;
+            'VHDName'             = $ConfigData.VHDFile;
+            'VMMemory'            = $ConfigData.VMMemory;
+            'VMProcessorCount'    = $ConfigData.VMProcessorCount;
+            'SwitchName'          = $ConfigData.SwitchName;
+            'NICs'                = $ToR.NICs;
+            'CredentialDomain'    = $DomainJoinUserNameDomain;
+            'CredentialUserName'  = $DomainJoinUserNameName;
+            'CredentialPassword'  = $DomainJoinPassword;
+            'JoinDomain'          = $ConfigData.DomainFQDN;
+            'LocalAdminPassword'  = $LocalAdminPassword;
+            'DomainAdminDomain'   = $LocalAdminDomainUserDomain;
+            'DomainAdminUserName' = $LocalAdminDomainUserName;
+            'IpGwAddr'            = '';
+            'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
+            'DomainFQDN'          = $ConfigData.DomainFQDN;
+            'ProductKey'          = $ConfigData.ProductKey;
+        }
+
+        New-SdnNestedVm @paramsToR
+
+        $credential = $LocalAdminCredential
+
+    }
+
+    while ((Invoke-Command -VMName $ToR.ComputerName -Credential $credential  -ErrorAction Ignore { $env:COMPUTERNAME } `
+                -ea SilentlyContinue) -ne $ToR.ComputerName) { Start-Sleep -Seconds 1 }
+
+    New-ToRrouter $configdata.TORrouter.Compurtename $DomainJoinCredential $ToR
+
+}
+
 
 Write-Host -ForegroundColor Yellow "Adding a vNIC called Mirror on $($configdata.SwitchName) for port Mirroring purpose" -NoNewline
 Write-Host -ForegroundColor Yellow "Run Wireshark upon this vNIC to see all SDN traffic"
