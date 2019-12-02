@@ -116,7 +116,7 @@ foreach ($Tenant in $configdata.Tenants) {
                 -Properties $VirtualGWProperties -Force 
 
             $VirtualGW
-
+            
             # Create a new object for the Tenant Network Connection  
             $nwConnectionProperties = New-Object Microsoft.Windows.NetworkController.NetworkConnectionProperties   
 
