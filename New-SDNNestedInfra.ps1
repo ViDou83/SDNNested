@@ -20,8 +20,6 @@
 .NOTES
 
 #>
-
-
 [CmdletBinding(DefaultParameterSetName = "NoParameters")]
 param(
     [Parameter(Mandatory = $false, ParameterSetName = "ConfigurationFile")]
@@ -50,6 +48,14 @@ if ($Configdata.ScriptVersion -ne $scriptversion) {
     return
 }
 
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Checking and getting credentials"
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+
 #Get credentials for provisionning
 $DomainJoinCredential = GetCred $ConfigData.DomainJoinSecurePassword $DomainJoinCredential `
     "Enter credentials for joining VMs to the AD domain." $configdata.DomainJoinUserName
@@ -64,12 +70,71 @@ $DomainJoinUserNameName = $ConfigData.DomainJoinUserName.Split("\")[1]
 $LocalAdminDomainUserDomain = $ConfigData.LocalAdminDomainUser.Split("\")[0]
 $LocalAdminDomainUserName = $ConfigData.LocalAdminDomainUser.Split("\")[1]
 
-
 $password = $LocalAdminPassword | ConvertTo-SecureString -asPlainText -Force
 $LocalAdminCredential = New-Object System.Management.Automation.PSCredential(".\administrator", $password)
 
 if ( $null -eq $ConfigData.VMProcessorCount) { $ConfigData.VMProcessorCount = 2 }
 if ( $null -eq $ConfigData.VMMemory) { $ConfigData.VMMemory = 4GB }
+
+Write-Host -ForegroundColor Green "Domain Admin Credantial=$DomainJoinUserNameName"
+Write-Host -ForegroundColor Green "Local Admin Credantial=$LocalAdminDomainUserName"
+
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "#### This script will deploy Hyper-V hosts and DC to host SDN stack based on the configuration file passed in $ConfigurationDataFile"
+Write-Host "#### Checking if all prerequisites before deploying"
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+#Checking Hyper-V role
+$HypvIsInstalled = Get-WindowsFeature Hyper-V
+if ( $HypvIsInstalled.InstallState -eq "Installed" ) {
+    Write-Host -ForegroundColor Green "Hypv role is $($HypvIsInstalled.installstate)"
+}
+else {
+    throw "Hyper-V Feature needs to be installed in order to deploy SDN nested"    
+}
+#Checking VMSwitch
+$vmswitch = get-vmswitch
+if ( $null -eq $vmswitch ) {
+    #throw "No virtual switch found on this host.  Please create the virtual switch before adding this host."
+    $vmswitch = New-VMSwitch -Name $configdata.SwitchName -SwitchType Internal
+}    
+
+if ( $vmswitch.name | Where-Object { $_ -eq $configdata.SwitchName } ) { 
+    Write-Host -ForegroundColor Green "VMSwitch $($configdata.SwitchName) found"
+}
+else {
+    throw "No virtual switch $($configdata.SwitchName) found on this host.  Please create the virtual switch before adding this host."    
+}
+
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Connecting $env:computername to the SDN switch"
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+Connect-HostToSDN $configdata.HostSdnNICs $vmswitch.Name $configdata.PublicVIPNetRoute
+
+
+
+<#
+    SDN DC DEPLOYMENT
+#>
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "###  Start Domain controller deployment "
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+
+#Checking if DCs are defined
+if ( $null -eq $configdata.DCs ) {
+    throw "No Domain Controller configuration defined."    
+}
 
 $paramsAD = @{
     'VMLocation'          = $ConfigData.VMLocation;
@@ -91,6 +156,49 @@ $paramsAD = @{
     'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
     'DomainFQDN'          = $ConfigData.DomainFQDN;
     'ProductKey'          = $ConfigData.ProductKey;
+}
+
+#Creating DC
+foreach ( $dc in $configdata.DCs) 
+{
+    $paramsAD.VMName = $dc.ComputerName
+    $paramsAD.Nics = $dc.NICs
+    #Creating DC with Desktop env 
+    $paramsAD.VHDName = $configdata.VHDGUIFile
+
+    New-SdnNestedVm @paramsAD 
+
+    Start-VM $dc.ComputerName
+
+    WaitLocalVMisBooted $dc.computername $LocalAdminCredential
+    if( $dc -eq $configdata.DCs[0])
+    {
+        New-SDNNestedADDSForest $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
+    }
+    else
+    {
+        Add-SDNNestedADDSDomainController $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
+    }
+    Write-Host  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
+    Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
+}
+
+WaitLocalVMisBooted $configdata.DCs[-1].computername $DomainJoinCredential
+
+<#
+    SDN HOST DEPLOYMENT
+#>
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Start Hypv hosts deployment "
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+
+#Checking if DCs are defined
+if ( $null -eq $configdata.HyperVHosts ) {
+    throw "No Hyper-V Host configuration defined."    
 }
 
 $paramsHOST = @{
@@ -115,6 +223,67 @@ $paramsHOST = @{
     'ProductKey'          = $ConfigData.ProductKey;
 }
 
+#Creating HYPV Hosts
+foreach ( $node in $configdata.HyperVHosts) 
+{
+    $paramsHOST.VMName = $node.ComputerName
+    $paramsHOST.Nics = $node.NICs
+    $paramsHOST.VMMemory =  $node.VMMemory
+    $paramsHOST.VMProcessorCount = 4
+
+    New-SdnNestedVm @paramsHOST
+
+    #required for nested virtualization 
+    Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
+    #Required to allow multiple MAC per vNIC
+    Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
+
+    Write-Host -ForegroundColor Green "Adding  VM S2D DataDisk on $($node.ComputerName)" 
+    Add-VMDataDisk $node.ComputerName $ConfigData.S2DDiskSize $ConfigData.S2DDiskNumber
+ 
+    Start-VM $node.ComputerName 
+     
+    WaitLocalVMisBooted $node.ComputerName $DomainJoinCredential 
+
+    $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
+    Add-WindowsFeatureOnVM $node.computername $DomainJoinCredential $FeatureList 
+    
+    Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
+        Write-Host "Adding SDN VMSwitch on $($env:COMPUTERNAME)"
+        New-VMSwitch -NetAdapterName $(Get-Netadapter).Name -SwitchName SDNSwitch -AllowManagementOS $true | Out-Null
+        Get-VMNetworkAdapter -ManagementOS -Name SDNSwitch | Rename-VMNetworkAdapter -NewName MGMT
+        Get-VMNetworkAdapter -ManagementOS -Name MGMT | Set-VMNetworkAdapterVlan -Access -VlanId $args[0]
+        #Cred SSDP for remote administration
+        Write-Host "Allowing CredSSP to manage HYPV host $($env:COMPUTERNAME) from Azure VM"
+        Enable-WSManCredSSP -Role Server -Force | Out-Null
+        Set-VMHost  -EnableEnhancedSessionMode $true
+    } -ArgumentList $Node.NICs[0].VLANID
+    
+    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
+    #Adding credential to the cache
+    Invoke-Expression -Command `
+        "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
+}
+
+WaitLocalVMisBooted $configdata.HyperVHosts[-1].Computername $DomainJoinCredential
+
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Configuring S2D Cluster "
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName 
+
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Start  SDN stack Tenant GW deployment "
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+
 $paramsGW = @{
     'VMLocation'          = $ConfigData.VMLocation;
     'VMName'              = '';
@@ -138,198 +307,23 @@ $paramsGW = @{
 }
 
 
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "--- This script will deploy Hyper-V hosts and DC to host SDN stack based on the configuration file passed in $ConfigurationDataFile"
-Write-Host "--- Checking if all prerequisites before deploying"
-#Checking Hyper-V role
-$HypvIsInstalled = Get-WindowsFeature Hyper-V
-if ( $HypvIsInstalled.InstallState -eq "Installed" ) {
-    Write-Host -ForegroundColor Green "Hypv role is $($HypvIsInstalled.installstate)"
-}
-else {
-    throw "Hyper-V Feature needs to be installed in order to deploy SDN nested"    
-}
-#Checking VMSwitch
-$vmswitch = get-vmswitch
-if ( $null -eq $vmswitch ) {
-    #throw "No virtual switch found on this host.  Please create the virtual switch before adding this host."
-    $vmswitch = New-VMSwitch -Name $configdata.SwitchName -SwitchType Internal
-}    
-
-if ( $vmswitch.name | Where-Object { $_ -eq $paramsHOST.SwitchName } ) { 
-    Write-Host -ForegroundColor Green "VMSwitch $($params.SwitchName) found"
-}
-else {
-    throw "No virtual switch $($params.SwitchName) found on this host.  Please create the virtual switch before adding this host."    
-}
-#Checking if DCs are defined
-if ( $null -eq $configdata.DCs ) {
-    throw "No Domain Controller configuration defined."    
-}
-
-#Checking if DCs are defined
-if ( $null -eq $configdata.HyperVHosts ) {
-    throw "No Hyper-V Host configuration defined."    
-}
-
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "--- Connecting $env:computername to the SDN switch"
-Connect-HostToSDN $configdata.HostSdnNICs $vmswitch.Name $configdata.PublicVIPNetRoute
-
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "--- Start Domain controller deployment "
-#Creating DC
-foreach ( $dc in $configdata.DCs) 
-{
-    $paramsAD.VMName = $dc.ComputerName
-    $paramsAD.Nics = $dc.NICs
-    #Creating DC with Desktop env 
-    $paramsAD.VHDName = $configdata.VHDGUIFile
-
-    Write-Host -ForegroundColor Green "Step 1 - Creating DC VM $($dc.ComputerName)" 
-    New-SdnNestedVm @paramsAD 
-
-    Start-VM $dc.ComputerName
-    Write-host "$($dc.ComputerName) is booting" -NoNewline
-    
-    while ((Invoke-Command -VMName $dc.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $dc.ComputerName) { Start-Sleep -Seconds 1; Write-Host "." -NoNewline }
-
-    New-SDNNestedDC $dc.Compurtename $LocalAdminCredential $configdata.DomainFQDN $LocalAdminPassword
-
-    Write-Host  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
-    Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
-}
-
-#Start-Sleep 60
-
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "--- Start Hypv hosts deployment "
-#Creating HYPV Hosts
-foreach ( $node in $configdata.HyperVHosts) {
-    $paramsHOST.VMName = $node.ComputerName
-    $paramsHOST.Nics = $node.NICs
-    $paramsHOST.VMMemory =  $node.VMMemory
-    $paramsHOST.VMProcessorCount = 4
-
-    Write-Host -ForegroundColor Green "Step 1 - Creating Host VM $($node.ComputerName)" 
-    New-SdnNestedVm @paramsHOST
-
-    #required for nested virtualization 
-    Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
-    #Required to allow multiple MAC per vNIC
-    Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
-
-    Write-Host -ForegroundColor Green "Step 2 - Adding  VM DataDisk for S2D on $($node.ComputerName)" 
-    Add-VMDataDisk $node.ComputerName $ConfigData.S2DDiskSize $ConfigData.S2DDiskNumber
- 
-    Write-Host -ForegroundColor Green  "Step 3 - Starting VM $($node.ComputerName)"
-    Start-VM $node.ComputerName 
- 
-    Write-Host -ForegroundColor yellow "Waiting till the $($node.computername) is not domain joined to $($configdata.DomainFQDN)"
-    while ( $( Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential  -ErrorAction Ignore { 
-                (Get-WmiObject -Class Win32_ComputerSystem).PartOfDomain }) -ne $true ) { Start-Sleep 1 }
-
-    Write-Host -ForegroundColor Green  "Step 4 - Adding required features on VM $($node.ComputerName)"
-    Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
-        $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
-        Add-WindowsFeature $FeatureList 
-        Restart-Computer -Force
-    }
-
-    Write-host "Wait till the VM $($node.ComputerName) is not WinRM reachable"
-    
-    Start-Sleep 30
-    
-    while ((Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $node.ComputerName) { Start-Sleep -Seconds 1 }  
-
-    Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
-        Write-Host -ForegroundColor Green "Step 5 - Adding SDN VMSwitch on $($env:COMPUTERNAME)"
-        New-VMSwitch -NetAdapterName $(Get-Netadapter).Name -SwitchName SDNSwitch -AllowManagementOS $true | Out-Null
-        Get-VMNetworkAdapter -ManagementOS -Name SDNSwitch | Rename-VMNetworkAdapter -NewName MGMT
-        Get-VMNetworkAdapter -ManagementOS -Name MGMT | Set-VMNetworkAdapterVlan -Access -VlanId $args[0]
-        #Cred SSDP for remote administration
-        Write-Host -ForegroundColor Green "Step 6 - Allowing CredSSP to managed HYPV host $($env:COMPUTERNAME) from Azure VM"
-        Enable-WSManCredSSP -Role Server -Force
-        Set-VMHost  -EnableEnhancedSessionMode $true
-    } -ArgumentList $Node.NICs[0].VLANID
-    
-    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
-    #Adding credential to the cache
-    Invoke-Expression -Command "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword"
-}
-
-#$password = $DomainJoinPassword | ConvertTo-SecureString -asPlainText -Force
-#$DomainJoinCredential = New-Object System.Management.Automation.PSCredential($ConfigData.DomainJoinUserName, $password)
-
-Start-Sleep 60
-
-Write-Host -ForegroundColor Green "Step 6 - Creating new S2D Failover cluster for Hyperconverged SDN"
-New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName 
-
-Write-Host -ForegroundColor Yellow "Adding entry in Azure VM's host file to manage S2D and SDN with WAC"
-Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
-
-Write-Host -ForegroundColor Green "SDN HyperConverged Cluster is ready."
-Write-Host -ForegroundColor Green ""
-
-Write-Host -ForegroundColor Green "Creating SMBSHare containing VHDX template to use with SDNExpress deployment"
-New-SmbShare -Name Template -Path $configdata.VHDPath -FullAccess Everyone
-
-$account = (get-localuser | ? Description -Match "Built-in account for administraring").name
-$Msg = "Please enter Password for local account $account"
-
-if ( $configdata.AzureVMadmin -and $configdata.AzureVMPwd) {
-    $secpasswd = ConvertTo-SecureString $configdata.AzureVMPwd -AsPlainText -Force
-    $LocalAzureVMCred = New-Object System.Management.Automation.PSCredential ($configdata.AzureVMadmin, $secpasswd)
-}
-else {
-    $LocalAzureVMCred = (Get-Credential -Message $Msg -Credential $account)   
-}
-
-
-#Misc things
-Invoke-Command -VMName $configdata.HyperVHosts[0].ComputerName  -Credential $DomainJoinCredential {
-    Write-Host -ForegroundColor Green "Mapping SMBSHare on $env:COMPUTERNAME to Z:"
-    $AzureVMName = $args[0]; $Cred = $args[1]
-    New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$AzureVMName\Template"  -Credential $Cred -Persistent $true
-
-    Add-MpPreference -ExclusionExtension "vhd"
-    Add-MpPreference -ExclusionExtension "vhdx"
-
-} -ArgumentList $env:COMPUTERNAME, $LocalAzureVMCred
-
-
-#####Move back
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "--- Start outside SDN stack Tenant GW deployment "
 #Creating Gw Hosts
 foreach ( $GW in $configdata.TenantInfraGWs) {
     $paramsGW.VMName = $GW.ComputerName
     $paramsGW.Nics = $GW.NICs
 
-    Write-Host -ForegroundColor Green "Step 1 - Creating GW VM $($GW.ComputerName)" 
     New-SdnNestedVm @paramsGW 
 
     Start-VM $GW.ComputerName
-    Write-host "Wait till the VM $($GW.ComputerName) is not WinRM reachable"
-    while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $GW.ComputerName) { Start-Sleep -Seconds 1 }
+
+    WaitLocalVMisBooted $GW.ComputerName $LocalAdminCredential
 
     foreach ( $TenantvGW in $configdata.TenantvGWs) {
-        #"$($TenantvGW.tenant) ==  $($Tenant.name) => $($Tenant.PhysicalGwVMName)"
-        if ( $TenantvGW.Tenant -eq $GW.Tenant ) {
+        if ( $TenantvGW.Tenant -eq $GW.Tenant ) 
+        {
+
+            Add-WindowsFeatureOnVM $GW.ComputerName $LocalAdminCredential RemoteAccess
+            <#
             invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential {
                 $TenantvGW = $args[0]
                 Write-Host -ForegroundColor Yellow "Checking IP config from $($TenantvGW.VirtualGwName) config"
@@ -339,11 +333,7 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
 
                 if ( $res.RestartNeeded -eq "Yes" ) { Restart-Computer -Force; Write-host "Rebooting $env:COMPUTERNAME" }
             } -ArgumentList $TenantvGW
-            
-            Sleep 30
-
-            while ((Invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential  -ErrorAction Ignore { $env:COMPUTERNAME } `
-                        -ea SilentlyContinue) -ne $GW.ComputerName) { Start-Sleep -Seconds 1 }
+            #>
 
             invoke-Command -VMName  $GW.ComputerName  -Credential $LocalAdminCredential {
                 $TenantvGW = $args[0]
@@ -410,21 +400,23 @@ foreach ( $GW in $configdata.TenantInfraGWs) {
     }
 }
 
-#####Move back
 Write-Host "############"
 Write-Host "########"
 Write-Host "####"
-Write-Host "--- ToR Router deployement "
-#Creating Gw Hosts
+Write-Host "### ToR Router deployement "
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+#Creating ToR Router
 foreach ( $ToR in $configdata.TORrouter) 
 {
 
     $credential = $DomainJoinCredential
 
-    if ( ! (get-vm $ToR.Compurtername) ){
+    if ( ! (get-vm $ToR.ComputerName -ErrorAction silentlycontinue ) ){
         $paramsToR = @{
             'VMLocation'          = $ConfigData.VMLocation;
-            'VMName'              = $ToR.Compurtename;
+            'VMName'              = $ToR.ComputerName;
             'VHDSrcPath'          = $ConfigData.VHDPath;
             'VHDName'             = $ConfigData.VHDFile;
             'VMMemory'            = $ConfigData.VMMemory;
@@ -447,16 +439,53 @@ foreach ( $ToR in $configdata.TORrouter)
         New-SdnNestedVm @paramsToR
 
         $credential = $LocalAdminCredential
+        Start-VM $ToR.ComputerName
 
+        WaitLocalVMisBooted $ToR.ComputerName $credential
     }
 
-    while ((Invoke-Command -VMName $ToR.ComputerName -Credential $credential  -ErrorAction Ignore { $env:COMPUTERNAME } `
-                -ea SilentlyContinue) -ne $ToR.ComputerName) { Start-Sleep -Seconds 1 }
-
-    New-ToRrouter $configdata.TORrouter.Compurtename $DomainJoinCredential $ToR
+    New-ToRrouter $configdata.TORrouter.ComputerName $credential $ToR
 
 }
 
+
+Write-Host "############"
+Write-Host "########"
+Write-Host "####"
+Write-Host "### Finishing deployment"
+Write-Host "####"
+Write-Host "########"
+Write-Host "############"
+#
+Write-Host -ForegroundColor Yellow "Adding entry in Azure VM's host file to manage S2D and SDN with WAC"
+Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
+
+Write-Host -ForegroundColor Green "Creating SMBSHare containing VHDX template to use with SDNExpress deployment"
+New-SmbShare -Name Template -Path $configdata.VHDPath -FullAccess Everyone -ErrorAction SilentlyContinue | out-Null
+
+if ( $configdata.AzureVMadmin -and $configdata.AzureVMPwd) 
+{
+    $secpasswd = ConvertTo-SecureString $configdata.AzureVMPwd -AsPlainText -Force
+    $LocalAzureVMCred = New-Object System.Management.Automation.PSCredential ($configdata.AzureVMadmin, $secpasswd)
+}
+else 
+{
+    $account = (get-localuser | ? Description -Match "Built-in account for administraring").name
+    $Msg = "Please enter Password for local account $account"
+    $LocalAzureVMCred = (Get-Credential -Message $Msg -Credential $account)   
+}
+
+
+#Misc things
+Invoke-Command -VMName $configdata.HyperVHosts[0].ComputerName  -Credential $DomainJoinCredential {
+    Write-Host -ForegroundColor Green "Mapping SMBSHare on $env:COMPUTERNAME to Z:"
+    $AzureVMName = $args[0]; $Cred = $args[1]
+    New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$AzureVMName\Template"  -Credential $Cred -Persistent $true
+
+    Add-MpPreference -ExclusionExtension "vhd"
+    Add-MpPreference -ExclusionExtension "vhdx"
+
+} -ArgumentList $env:COMPUTERNAME, $LocalAzureVMCred
 
 Write-Host -ForegroundColor Yellow "Adding a vNIC called Mirror on $($configdata.SwitchName) for port Mirroring purpose" -NoNewline
 Write-Host -ForegroundColor Yellow "Run Wireshark upon this vNIC to see all SDN traffic"

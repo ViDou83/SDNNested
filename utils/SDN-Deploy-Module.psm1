@@ -335,9 +335,10 @@ function New-SDNS2DCluster {
         [String] $IpAddress,
         [String] $ClusterName
     )
-
-    Write-Host "S2DCONFIG: Cleaning Drives"
+    Write-Host -ForegroundColor Green "Creating  S2D Failover cluster on $Nodes"
+    foreach ( $node in $nodes ){ Write-Host -ForegroundColor Green }
     Invoke-Command -VMName ($Nodes) -Credential $credential {
+        Write-Host "S2DCONFIG: Cleaning Drives on $env:COMPUTERNAME"
         Update-StorageProviderCache
         Get-StoragePool | Where-Object IsPrimordial -eq $false | Set-StoragePool -IsReadOnly:$false -ErrorAction SilentlyContinue
         Get-StoragePool | Where-Object IsPrimordial -eq $false | Get-VirtualDisk | Remove-VirtualDisk -Confirm:$false -ErrorAction SilentlyContinue
@@ -360,7 +361,7 @@ function New-SDNS2DCluster {
         $ClusterName = $args[2]
 
         # Create S2D Cluster
-        Write-Verbose "Creating Cluster: SDNCLUSTER"
+        Write-Verbose "Creating S2D Cluster: ClusterName=$ClusterName ClusterIP=$ClusterIP"
         Import-Module FailoverClusters 
 
         #Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"

@@ -296,7 +296,10 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
         import-module networkcontroller  
 
-        $TenantVM = $args[0]; $vm = $args[1]; $uri = $args[2]; $cred = $args[3]
+        $TenantVM = $args[0]; 
+        $vm = $args[1]; 
+        $uri = $args[2]; 
+        $cred = $args[3]
         #$TenantVM
 
         try {
@@ -307,11 +310,14 @@ foreach ($TenantVM in $configdata.TenantVMs) {
             break;
         }
 
+        WaitLocalVMisBooted $TenantVM.Name $cred
+
+        <#
         Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-
+    #>
         #Attaching to the tenant VNET
         foreach ( $NIC in $TenantVM.NICs) {
             Stop-VM -VMName $TenantVM.Name -Force
@@ -385,12 +391,15 @@ foreach ($TenantVM in $configdata.TenantVMs) {
         }   
 
         Start-VM $TenantVM.Name
-            
+      
+        WaitLocalVMisBooted $TenantVM.Name $cred
+           
+        <#
         Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-
+        #>
         if ( $TenantVM.roles) {
             Write-Host -ForegroundColor Green  "Adding required features on VM $($TenantVM.Name)"
            
@@ -416,11 +425,14 @@ foreach ($TenantVM in $configdata.TenantVMs) {
             } -ArgumentList $TenantVM.roles
         }
 
+        WaitLocalVMisBooted $TenantVM.Name $cred $true 60
+
+       <# 
         Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
     
         while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
                     -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-
+             #>
         Write-Host -ForegroundColor Green  "Adding VM=$($TenantVM.Name) to the failover cluster"
         Get-VM  $TenantVM.Name | Add-ClusterVirtualMachineRole
 

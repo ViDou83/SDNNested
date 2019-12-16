@@ -9,6 +9,29 @@ function GetCred {
         return  get-Credential -Message $Message -UserName $UserName
 }
 
+function WaitLocalVMisBooted()
+{
+
+    param(
+        [String] $VMName,
+        [PSCredential] $Credential,
+        [Boolean] $Wait,
+        [Int] $Seconds
+    )
+
+    Write-host -ForegroundColor Yellow "$VMName is booting" -NoNewline
+    
+    if ( $Wait ){
+        for($i=0;$i -lt $Seconds;$i++){ Write-Host "." -NoNewline; Sleep 1; }
+    }
+
+    while ((Invoke-Command -VMName $VMName -Credential $Credential -ErrorAction SilentlyContinue { $env:COMPUTERNAME } `
+                ) -ne $VMName) { Start-Sleep -Seconds 1; Write-Host "." -NoNewline }
+
+    Write-host "[OK]"
+
+}
+
 function Add-UnattendFileToVHD {
     
     Param(
@@ -245,8 +268,10 @@ function New-SdnNestedVm() {
     $CurrentVMLocationPath = "$VMLocation\$VMName"
     $VHDTemplateFile = "$VHDSrcPath\$VHDName"
 
+    Write-Host -ForegroundColor Green "Creating VM $VMName" 
+
     if ( !(Test-Path $CurrentVMLocationPath) ) {  
-        Write-Host -ForegroundColor Yellow "Creating folder $CurrentVMLocationPath"
+        Write-Host "Creating folder $CurrentVMLocationPath"
         New-Item -ItemType Directory $CurrentVMLocationPath | Out-null
     }
 
@@ -272,8 +297,6 @@ function New-SdnNestedVm() {
     Add-UnattendFileToVHD @params
     
     if ( Test-Path $CurrentVMLocationPath) {
-        Write-Host "Creating VM $VMName"
-
         $VHDOsFile = $(Get-Item $CurrentVMLocationPath\*.vhdx).FullName
 
         $NewVM = New-VM -Generation 2 -Name $VMName -Path $CurrentVMLocationPath -MemoryStartupBytes $VMMemory -VHDPath $VHDOsFile -SwitchName $SwitchName
@@ -308,7 +331,7 @@ function New-ToRRouter()
         $TORrouter = $args[0]
         
         #Case where the VM is DC
-        if ( get-service DNS )
+        if ( get-service DNS -ErrorAction SilentlyContinue | Out-Null )
         {
             #Removing DNS registration on 2nd adapter
             Write-host -ForegroundColor Green "Configuring DNS server to only listening on mgmt NIC"   
@@ -318,9 +341,13 @@ function New-ToRRouter()
             dnscmd /ResetListenAddresses "$($configdata.ManagementDNS)"
             Restart-Service DNS
         }
+    }
 
-        Write-host -ForegroundColor Green "Installing RemoteAccess on vm $env:COMPUTERNAME to act as TOR Router"   
-        Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools
+    Add-WindowsFeatureOnVM $VMName $credential RemoteAccess
+
+    Invoke-Command -VMName $VMName -Credential $credential { 
+        $TORrouter = $args[0]
+        
         Install-RemoteAccess -VpnType RoutingOnly
 
         Write-host -ForegroundColor Yellow "Configuring $env:COMPUTERNAME as TOR router" 
@@ -341,11 +368,11 @@ function New-ToRRouter()
             $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
 
             if ( $ifIndex ){
-                Write-host -ForegroundColor Green "Adding Static route Dst=$($route.Destination) NextHop=$($route.NextHop) ifIndex=$ifIndex"
-                New-NetRoute -DestinationPrefix $route.Destination -NextHop $route.NextHop -ifIndex $ifIndex
+                Write-host -ForegroundColor Green "Adding Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+                New-NetRoute -DestinationPrefix $route.Route -NextHop $route.NextHop -ifIndex $ifIndex
             }
             else { 
-                Write-host -ForegroundColor RED "ERROR: Failded to add Static route Dst=$($route.Destination) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+                Write-host -ForegroundColor RED "ERROR: Failded to add Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
             }
         }
     } -ArgumentList $TORrouter
@@ -363,14 +390,10 @@ function Add-vNicIpConfig(){
     $IpAddr = $NetConfig.IpAddress.split("/")[0]
     $PrefixLength = $NetConfig.IpAddress.split("/")[1]
 
-    $vNIC
-
-    $NetAdapter
-
     if( $NetAdapter)
     {
-        Write-Host "Configure Ip address/mask=$IpAddr/$PrefixLength vNic=$($vNIC.Name) Host=$env:COMPUTERNAME"
-        $NetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $IpAddr -PrefixLength $PrefixLength 
+        Write-Host "Configure Ip address/mask=$IpAddr/$PrefixLength Adapter=$($NetAdapter.Name) Host=$env:COMPUTERNAME"
+        $NetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $IpAddr -PrefixLength $PrefixLength | Out-Null
         Write-Host "Configure DNS $($NetConfig.DNS) NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
         $NetAdapter | Set-DnsClientServerAddress -ServerAddresses $NetConfig.DNS
     }
@@ -378,7 +401,6 @@ function Add-vNicIpConfig(){
 
     Write-Host  "Configuring VLAN vNic=$($vNIC.Name) VLANID=$($NetConfig.VLANID) Host=$env:COMPUTERNAME"
     $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NetConfig.VLANID
-
 
 }
 
@@ -393,10 +415,19 @@ function Connect-HostToSDN()
 
     foreach($NIC in $NICs)
     {
-        $vNIC = Add-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch        
+
+        Write-Host -ForegroundColor Green "Adding vNIC=$($NIC.Name) on Host=$env:COMPUTERNAME"
+
+        if ( !(  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch -ErrorAction SilentlyContinue ) )
+        {
+            Add-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch 
+        }
+        while ( !( Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch -ErrorAction Ignore)){ sleep 1}
+        
+        $vNIC =  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch
         if( $vNIC ) 
         { 
-            Write-Host "Adding vNIC=$($NIC.Name) on Host=$env:COMPUTERNAME"
+            Write-Host "Configure vNIC=$($NIC.Name) Ip config on Host=$env:COMPUTERNAME"
             Add-vNicIpConfig $vNIC $NIC
         }
     }
@@ -404,42 +435,65 @@ function Connect-HostToSDN()
     $NextHopSplit = $($NetRoute.NextHop).split(".")
     $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
 
-    if ( $ifIndex){
-        New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex
-        Write-Host -ForegroundColor Green "NetRoute on $env:computername to reach SDN VIP pool=$($NetRoute.Destination) is added"
+    if ( $ifIndex ){
+        New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex | Out-Null
+        Write-Host -ForegroundColor Green "NetRoute SDN VIP pool=$($NetRoute.Destination) is added on $env:computername"
     }
     else  { Write-Host -ForegroundColor Red "ERROR: NetRoute=$($NetRoute.Destination) on $env:computername to reach SDN VIP has not been added" }
 }
 
-function Add-WindowsFeature() {
+function Add-WindowsFeatureOnVM() {
     param(
         [String] $VMName,
         [PSCredential] $credential,
         [String[]] $FeatureList
     )
 
+    $SecondsToWait=0
+
     foreach ($feature in $FeatureList) {
         Invoke-Command -VMName $VMName -Credential $credential {
             $feature=$args[0]
             Write-host "Installing Windows Feature $feature on $($env:COMPUTERNAME)"
-            Install-WindowsFeature -Name $feature -IncludeManagementTools | Out-Null
+            
+            if ( $feature -eq "RemoteAccess"){ Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools | Out-Null }
+            else { Install-WindowsFeature -Name $feature -IncludeManagementTools | Out-Null }
+            
         } -ArgumentList $feature
+        $SecondsToWait+=30
     }
-    Write-host "Restarting $VMName"
-    Invoke-Command -VMName $VMName -Credential $credential { Restart-Computer -Force }
+    
+    Invoke-Command -VMName $VMName -Credential $credential { 
+        Write-host -ForegroundColor Yellow "Rebooting $env:COMPUTERNAME" 
+        Restart-Computer -Force 
+    }
+    
+    
+    WaitLocalVMisBooted $VMName $credential $true $SecondsToWait
+
+    <#
+    Invoke-Command -VMName $VMName -Credential $credential {
+        $FeatureList=$args[0]
+        Write-host "Installing Windows Feature $FeatureList on $($env:COMPUTERNAME)"
+        Install-WindowsFeature -Name Using:$FeatureList -IncludeManagementTools -Restart
+        #Restart-Computer -Force
+    } -ArgumentList $FeatureList
+    #>
 }
 
 <#
     Promote VM to be a DC using config passed in. If it is the 1st DC, installing Forest 
 #>
-New-SDNNestedDC()
+function New-SDNNestedADDSForest()
 {
     param(
         [String] $VMName,
         [pscredential] $Credential,
-        [String] $DomainFQDN,
-        [String] $SafeModePwd
+        [String] $DomainFQDN
     )
+    
+    $password = $Credential.GetNetworkCredential().Password
+    $SafeModePwd = $password | ConvertTo-SecureString -asPlainText -Force
     
     $paramsDeployForest = @{
         DomainName                    = $DomainFQDN
@@ -448,9 +502,9 @@ New-SDNNestedDC()
         SafeModeAdministratorPassword = $SafeModePwd
 
     }
-
+    
     Invoke-Command -VMName $VMName -Credential $Credential -ScriptBlock {
-        Write-host -ForegroundColor Green "Installing AD-Domain-Services on vm $env:COMPUTERNAME"
+        Write-host -ForegroundColor Green "Installing AD-DS on vm $env:COMPUTERNAME"
         Install-WindowsFeature -name AD-Domain-Services -IncludeManagementTools | Out-Null
         
         $params = @{
@@ -462,6 +516,30 @@ New-SDNNestedDC()
         Install-ADDSForest @params -InstallDns -Confirm -Force | Out-Null
         #
     } -ArgumentList $paramsDeployForest
+}
+
+function Add-SDNNestedADDSDomainController()
+{
+    param(
+        [String] $VMName,
+        [pscredential] $Credential,
+        [String] $DomainFQDN
+    )
+
+    $paramsAddDc = @{
+        DomainName                    = $DomainFQDN
+        Credential                    = $Credential
+    }
+
+    Invoke-Command -VMName $VMName -Credential $Credential -ScriptBlock {
+        $params = @{
+            DomainName                    = $args.DomainName
+            Credential                    = $args.Credential
+        }
+
+        Write-host -ForegroundColor Green "Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
+        Install-ADDSDomainController @params -InstallDns -Confirm -Force | Out-Null
+    } -ArgumentList $paramsAddDc
 }
 
 function Add-VMDataDisk() {
@@ -515,7 +593,7 @@ function New-SDNS2DCluster {
         Write-Verbose "Creating Cluster: SDNCLUSTER"
         Import-Module FailoverClusters 
 
-        Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"
+        #Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"
 
         # Create Cluster
         New-Cluster -Name $ClusterName -Node $ClusterNodes -StaticAddress $ClusterIP -NoStorage | Out-Null

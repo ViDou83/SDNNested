@@ -69,7 +69,7 @@ foreach ( $node in $Nodes) {
         $VMids =  (get-vm).VMId
         foreach( $VMid in $VMids)
         { 
-            if ( ! (Get-ClusterResource -VMId $VMid) ){  Get-VM -VMId $VMid Add-ClusterVirtualMachineRole } 
+            if ( ! (Get-ClusterResource -VMId $VMid -erroraction SilentlyContinue ) ){  Get-VM -VMId $VMid Add-ClusterVirtualMachineRole } 
         }
 
     } -ArgumentList $LocalAdminCredential, $DomainJoinCredential

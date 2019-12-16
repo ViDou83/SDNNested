@@ -122,6 +122,7 @@
             
             NICs    = @( 
                             @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
+                            @{ Name = "Ethernet 2"; IPAddress = '10.184.108.254/24'; Gateway = ''; DNS = '' ; VLANID = 7 };
             )
 
             SDNASN       = '64628'
@@ -163,7 +164,7 @@
 
     SwitchName           = "SDN"
 
-    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.10.56.1"; }
+    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.254"; }
 
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''
