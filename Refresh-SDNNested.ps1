@@ -37,7 +37,7 @@ $Nodes = (Get-VM *SDN-HOST*).Name
 
 foreach ( $node in $Nodes) {
 
-    icm -VMNAme $node -Credential $DomainJoinCredential {
+    invoke-Command -VMNAme $node -Credential $DomainJoinCredential {
         $cred = $args[0]
         $DomainCred = $args[1]
         #Enable  Enhanced more everywhere
@@ -53,25 +53,26 @@ foreach ( $node in $Nodes) {
             Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
             $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match $RestName }).Thumbprint
             New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCthumbprint -Credential $cred -force
-            #$Mythumbprint = (Get-ChildItem Cert:\LocalMachine\My | ? { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
             New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
         }
 
         #Restart and fixing NcHostAgent,SblHostAgent, SBLMux service issue
         Get-Service  NcHostAgent,SlbHostAgent | Restart-Service -Force
         Get-VM *MUX* | %{
-            icm -VMName $_.Name -Credential $DomainCred {
+            invoke-Command -VMName $_.Name -Credential $DomainCred {
                 Get-Service  SLBMux | Restart-Service -Force
             }
         }
 
-        #Adding all VMs to cluster 
-        $VMids =  (get-vm).VMId
-        foreach( $VMid in $VMids)
-        { 
-            if ( ! (Get-ClusterResource -VMId $VMid -erroraction SilentlyContinue ) ){  Get-VM -VMId $VMid Add-ClusterVirtualMachineRole } 
+        if ( (Test-Path "C:\clusterStorage") )
+        {
+            #Adding all VMs to cluster 
+            $VMids =  (get-vm).VMId
+            foreach( $VMid in $VMids)
+            { 
+                if ( ! (Get-ClusterResource -VMId $VMid -erroraction SilentlyContinue ) ){  Get-VM -Id $VMid | Add-ClusterVirtualMachineRole } 
+            }
         }
-
     } -ArgumentList $LocalAdminCredential, $DomainJoinCredential
     
 }

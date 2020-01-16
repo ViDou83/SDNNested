@@ -20,7 +20,9 @@ if (!$feature.Installed) {
 }
 
 import-module networkcontroller  
-import-module .\utils\SDN-Deploy-Module.psm1 -force
+#import-module .\utils\SDN-Deploy-Module.psm1 -force
+import-module .\utils\SDNNested-Module.psm1
+
 import-module .\SDNExpress\SDNExpressModule.psm1
 
 # Script version, should be matched with the config files
@@ -256,82 +258,81 @@ $paramsTenant = @{
     'DomainAdminDomain'   = $LocalAdminDomainUserDomain;
     'DomainAdminUserName' = $LocalAdminDomainUserName;
     'IpGwAddr'            = $ConfigData.ManagementGateway;
-    'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
+    'DnsIpAddr'           = $ConfigData.ManagementDNS;
     'DomainFQDN'          = $ConfigData.DomainFQDN;
     'ProductKey'          = $ConfigData.ProductKey;
-    'HypvHost'            = '';
 }
 
-foreach ($TenantVM in $configdata.TenantVMs) {
-            
+foreach ($TenantVM in $configdata.TenantVMs) 
+{
     $uri = $configdata.RestURI
 
-    $vm = Get-VM -ComputerName $configdata.HYPV | ? Name -eq $TenantVM.Name
+    $vm = Get-VM -ComputerName $TenantVM.HypvHostname | ? Name -eq $TenantVM.Name
     
-    if ($null -eq $vm) { 
-        Write-Host -ForegroundColor Yellow "Adding VM=$($TenantVM.Name) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
+    if ($null -eq $vm) 
+    { 
+        Write-Host -ForegroundColor Green "Adding VM=$($TenantVM.Name) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
         $paramsTenant.VMName = $TenantVM.Name
         $paramsTenant.NICs = $TenantVM.NICs
-        $paramsTenant.HypvHost = $TenantVM.HypvHostname
-        New-SdnVM @paramsTenant; 
-    }
-    else {
-        Write-Host -ForegroundColor Yellow "VM $($TenantVM.Name) already exist on $($vm.computername)"                
-    }
-
-    $secpasswd = ConvertTo-SecureString $LocalAdminPassword -AsPlainText -Force
-    $cred = New-Object System.Management.Automation.PSCredential("administrator", $secpasswd)
-
-    Invoke-Command -computername $TenantVM.HypvHostname {
-
-        #Get-SmbShare -Name VMShare -ErrorAction Ignore | remove-SMBShare -Force | out-null
-      
-        $feature = get-windowsfeature "RSAT-NetworkController"
-        if ($feature -eq $null) {
-            throw "SDN Express requires Windows Server 2016 or later."
-        }
-        if (!$feature.Installed) {
-            add-windowsfeature "RSAT-NetworkController"
-        }
-
-        import-module networkcontroller  
-
-        $TenantVM = $args[0]; 
-        $vm = $args[1]; 
-        $uri = $args[2]; 
-        $cred = $args[3]
-        #$TenantVM
-
-        try {
-            Start-VM $TenantVM.Name -ErrorAction stop
-        }
-        catch { 
-            Write-Host -ForegroundColor Red "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
-            break;
-        }
-
-        WaitLocalVMisBooted $TenantVM.Name $cred
-
-        <#
-        Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
+        if ( $TenantVM.VHDFile){  $paramsTenant.VHDName = $TenantVM.VHDFile}
+        if ( $TenantVM.VMMemory){ $paramsTenant.VMMemory = $TenantVM.VMMemory}
+        if ( $TenantVM.VMProcessorCount){ $paramsTenant.VMProcessorCount = $TenantVM.VMProcessorCount}
+        #$paramsTenant.HypvHost = $TenantVM.HypvHostname
     
-        while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
-                    -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-    #>
-        #Attaching to the tenant VNET
-        foreach ( $NIC in $TenantVM.NICs) {
-            Stop-VM -VMName $TenantVM.Name -Force
+        $secpasswd = ConvertTo-SecureString $paramsTenant.LocalAdminPassword -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential("administrator", $secpasswd)
 
+        Invoke-Command -ComputerName $TenantVM.HypvHostname {
+            $paramsTenant = $args[0]
+            $TenantVM = $args[1]
+            $cred = $args[2]
+            
+            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+
+            New-SdnNestedVm @paramsTenant
+
+            $feature = get-windowsfeature "RSAT-NetworkController"
+            if ($feature -eq $null) {
+                throw "SDN Express requires Windows Server 2016 or later."
+            }
+            if (!$feature.Installed) {
+                add-windowsfeature "RSAT-NetworkController"
+            }
+
+            import-module networkcontroller  
+
+            if( get-cluster -ea SilentlyContinue ){ 
+                Write-Host -ForegroundColor Green  "Adding VM=$($TenantVM.Name) to the failover cluster"            
+                Get-VM -VMName $TenantVM.Name | Add-ClusterVirtualMachineRole 
+            }
+
+            try {
+                Start-VM $TenantVM.Name -ErrorAction stop
+            }
+            catch { 
+                Write-Host -ForegroundColor Red "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
+                break;
+            }
+            
+            WaitLocalVMisBooted $TenantVM.Name $cred
+
+            Write-Host "Stopping VM $($TenantVM.Name)"
+            Stop-VM -VMName $TenantVM.Name -Force 
+        } -ArgumentList $paramsTenant,$TenantVM, $cred
+
+        #Creating NIC object on NCs
+        foreach ( $NIC in $TenantVM.NICs) 
+        {
             $vmnicproperties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceProperties
-            $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"
-                
+            $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"                
             $vmnicproperties.IsPrimary = $true 
+            $vmnicResourceId = "$($TenantVM.Name)_VMNIC0"
 
             $vmnicproperties.DnsSettings = new-object Microsoft.Windows.NetworkController.NetworkInterfaceDnsSettings
             $vmnicproperties.DnsSettings.DnsServers = $TenantVM.NICs[0].DNS
 
             $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
-            $ipconfiguration.resourceid = "$($TenantVM.Name)_IP1"
+            $ipconfiguration.resourceid = "$($TenantVM.Name)_IP0"
             $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
             $ipconfiguration.properties.PrivateIPAddress = ($NIC.IPAddress).split("/")[0]
             $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
@@ -348,11 +349,17 @@ foreach ($TenantVM in $configdata.TenantVMs) {
 
             Write-host -ForegroundColor Yellow "Pushing  $($TenantVM.Name) NIC config to REST API"
 
-            $nic = New-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -Properties $vmnicproperties `
-                -ConnectionUri $uri -Force
-                   
-            #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
+            $nic = New-NetworkControllerNetworkInterface -ResourceID $vmnicResourceId -Properties $vmnicproperties -ConnectionUri $uri -Force
+        }
+         
+        Invoke-Command -ComputerName $TenantVM.HypvHostname {
+            $TenantVM = $args[0]
+            $uri = $args[1]
+            $cred = $args[2]
 
+            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+
+            #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
             $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
                                 
             $vmNics = Get-VMNetworkAdapter -VMName $TenantVM.Name
@@ -360,7 +367,9 @@ foreach ($TenantVM in $configdata.TenantVMs) {
             $CurrentFeature = Get-VMSwitchExtensionPortFeature -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
 
             Write-host -ForegroundColor Yellow "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
-
+            
+            $nic = Get-NetworkControllerNetworkInterface -ResourceID "$($TenantVM.Name)_VMNIC0" -ConnectionUri $uri 
+            
             if ($null -eq $CurrentFeature) {
                 $Feature = Get-VMSystemSwitchExtensionPortFeature -FeatureId $FeatureId
 
@@ -382,62 +391,129 @@ foreach ($TenantVM in $configdata.TenantVMs) {
                 Set-VMSwitchExtensionPortFeature -VMSwitchExtensionFeature $CurrentFeature -VMNetworkAdapter $vmNics
             }
             #Wait to be sure that Mac Address Allocation has been done
-            Start-Sleep 10
-            
-            $nic = Get-NetworkControllerNetworkInterface -ResourceID $ipconfiguration.resourceid -ConnectionUri $uri
-            
-            $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress
-            
-        }   
+            do{
+                $nic = Get-NetworkControllerNetworkInterface -ResourceID $nic.resourceid -ConnectionUri $uri
+                Start-Sleep 1
+            }while ( $null -eq $nic.properties.PrivateMacAddress );
 
-        Start-VM $TenantVM.Name
-      
-        WaitLocalVMisBooted $TenantVM.Name $cred
-           
-        <#
-        Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
+            $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress   
+            
+            Write-Host "Starting VM $($TenantVM.Name)"
+            Start-VM $TenantVM.Name
+            WaitLocalVMisBooted $TenantVM.Name $cred
+        } -ArgumentList $TenantVM, $uri, $cred
+            
+        if ( $TenantVM.roles -eq "ContainerHost") 
+        {
+            $FirstIpInPool =   $($TenantVM.ContainersIpPool).split("/")[0]
+            $LastIpInPool = Get-IPLastAddressInSubnet $TenantVM.ContainersIpPool
+
+            $NbrIP =  $LastIpInPool.split(".")[-1] - $FirstIpInPool.split(".")[-1] 
+
+            $ip=$FirstIpInPool
+            $ContainersIPs = @()
+            for( $i=0; $i -lt $NbrIP; $i++)
+            {
+                $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
+                $ipconfiguration.resourceid = "$($TenantVM.Name)_IP$($i+1)"
+                $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
+                $ipconfiguration.properties.PrivateIPAddress = $ip
+                $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
+                $ipconfiguration.properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
+                $ipconfiguration.properties.subnet.ResourceRef = $vnet.Properties.Subnets[0].ResourceRef
     
-        while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
-                    -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-        #>
-        if ( $TenantVM.roles) {
-            Write-Host -ForegroundColor Green  "Adding required features on VM $($TenantVM.Name)"
-           
-            Invoke-Command -VMName $TenantVM.Name -Credential $cred {
-                $FeatureList = $args[0]
-                
-                Add-WindowsFeature $FeatureList 
+                $nic.properties.IpConfigurations += $ipconfiguration
 
-                $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
-                $index = Get-Random -Minimum 0 -Maximum 8
-                mv C:\inetpub\wwwroot\iisstart.htm C:\inetpub\wwwroot\iisstart.htm.old -Force
-                $background = $colors[$index]
-                $content = @"
+                $ContainersIPs += $ip 
+
+                [int]$LastByte = $ip.split(".")[-1]
+                $LastByte++
+                $ip = "$($ip.split(".")[0])" + "."  + "$($ip.split(".")[1])" + "." + "$($ip.split(".")[2])" + "."  + "$LastByte"
+            }
+
+            Write-Host -ForegroundColor Green  "Adding ContainerIpPool=$($TenantVM.ContainersIpPool) to $($TenantVM.Name) VMNic Object"
+            $nic = New-NetworkControllerNetworkInterface -ResourceID $nic.resourceid -Properties $nic.properties -ConnectionUri $uri -Force
+
+            Invoke-Command -ComputerName $TenantVM.HypvHostname {
+                $ContainersIPs = $args[0]
+                $TenantVM = $args[1]
+                $cred = $args[2]
+
+                if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+
+                $pssession = New-PSSession -VMName $TenantVM.Name -Credential $cred     
+                copy-item -ToSession $pssession -Destination C:\temp -Path Z:\SDNNested\utils\Container\ -Recurse -force
+           
+                Invoke-Command -VMName $TenantVM.Name -Credential $cred {
+                    #Checking docker service status
+                    $ContainersIPs = $args
+                    get-service docker |  %{ if($_.Status -ne "Running"){ Start-Service docker} }
+                    cd c:\temp 
+                    
+                    Write-Host  -ForegroundColor Green "Creating docker custom IIS container image from docker file iis-site"
+                    docker build -f C:\temp\iis-site -t iis-site . 
+                    
+                    Write-Host  -ForegroundColor Green "Creating docker l2bridge network"
+                    docker network create -d l2bridge -o com.docker.network.windowsshim.interface="Ethernet" --subnet="172.16.1.0/24" `
+                        --gateway="172.16.1.1" MyContainerOverlayNetwork
+
+                    Write-Host -ForegroundColor Green "Running $($ContainersIPs.count) containers"
+                    foreach ( $IP in $ContainersIPs){
+                        docker run -d --restart always --network=MyContainerOverlayNetwork --ip="$IP" -v C:\temp\:C:\temp `
+                            -e CONTAINER_HOST=$(hostname) iis-site powershell C:\temp\GenIISDefault.ps1          
+                    }
+
+                    import-module c:\temp\HNS.V2.psm1
+
+                    $VIP=(Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "172.16.1.").IPAddress
+                    $endpoints = Get-HnsEndpoint
+                    Write-Host -ForegroundColor Green "Creating LoadBalancer on Container Host using HNVv2 API "
+                    New-HnsLoadBalancer -InternalPort 80 -ExternalPort 80 -Endpoints $endpoints.Id -Protocol 6 -Vip $VIP -DSR
+
+                } -ArgumentList $ContainersIPs
+            } -ArgumentList $ContainersIPs, $TenantVM, $cred
+        }
+        else {
+            Write-Host -ForegroundColor Green  "Adding required features on VM $($TenantVM.Name)"
+            
+            Invoke-Command -ComputerName $TenantVM.HypvHostname {
+                $TenantVM = $args[0]
+                $cred = $args[1]
+
+                if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+
+                Add-WindowsFeatureOnVM $TenantVM.Name $cred $TenantVM.Roles
+
+                Invoke-Command -VMName $TenantVM.Name -Credential $cred {
+                    $colors = @("red", "blue", "green", "yellow", "purple", "orange", "pink", "gray")
+                    $index = Get-Random -Minimum 0 -Maximum 8
+                    mv C:\inetpub\wwwroot\iisstart.htm C:\inetpub\wwwroot\iisstart.htm.old -Force
+                    $background = $colors[$index]
+                    
+                    $ip=((Get-NetIPAddress -AddressFamily IPv4).IPAddress)[0]
+
+                    $content = @"
 <html>
 <body bgcolor="$background">
-<h1>$env:computername</h1>
+<h1>VMName:$env:computername</h1>
+<h1>VMip:$ip</h1>
 </body>
 </html>
 "@
-                Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
+                    Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
+                }
 
-                Restart-Computer -Force
-            } -ArgumentList $TenantVM.roles
+                if( get-cluster -ea SilentlyContinue ){ 
+                    Write-Host -ForegroundColor Green  "Move VM=$($TenantVM.Name) to the node configured"                
+                    Get-VM $TenantVM.Name | Move-ClusterVirtualMachineRole -Node $TenantVM.HypvHostname -ErrorAction SilentlyContinue
+                } 
+            } -ArgumentList $TenantVM, $cred
         }
 
-        WaitLocalVMisBooted $TenantVM.Name $cred $true 60
-
-       <# 
-        Write-host "Wait till the VM $($TenantVM.Name) is WinRM reachable"
-    
-        while ((Invoke-Command -VMName $TenantVM.Name -Credential $cred { $env:COMPUTERNAME } `
-                    -ea SilentlyContinue) -ne $TenantVM.Name) { Start-Sleep -Seconds 1 }
-             #>
-        Write-Host -ForegroundColor Green  "Adding VM=$($TenantVM.Name) to the failover cluster"
-        Get-VM  $TenantVM.Name | Add-ClusterVirtualMachineRole
-
-    } -ArgumentList $TenantVM, $vm, $uri, $cred
-
+    }
+    else {
+        Write-Host -ForegroundColor Yellow "VM $($TenantVM.Name) already exist on $($vm.computername)"
+    }
 }
 
 foreach ($vip in $configdata.SlbVIPs) {
@@ -479,14 +555,31 @@ foreach ($vip in $configdata.SlbVIPs) {
     $lbrule.properties.backendPort = $vip.BackendPort
     $lbrule.properties.IdleTimeoutInMinutes = 4
 
+    
+    $Probe = new-object Microsoft.Windows.NetworkController.LoadBalancerProbe
+    $Probe.ResourceId = "Probe1"
+    $Probe.ResourceRef = "/loadBalancers/$lbresourceId/Probes/$($Probe.ResourceId)"
+   
+    $Probe.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerProbeProperties
+    $Probe.properties.Protocol = $vip.Protocol
+    $Probe.properties.Port = $vip.BackendPort
+    #$Probe.properties.RequestPath = "/health.htm"
+    $Probe.properties.IntervalInSeconds = 5
+    $Probe.properties.NumberOfProbes = 3
+   
+    $LoadBalancerProperties.Probes += $Probe
+
+    $LoadBalancerProperties.loadbalancingRules.properties.Probe += $Probe 
+
     $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
-        -Properties $LoadBalancerProperties -Force
+        -Properties $LoadBalancerProperties -Force -PassInnerException
 
     foreach ($vm in $vip.TenantVMs) {
-        $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_IP1"
+        $nic = Get-NetworkControllerNetworkInterface -ConnectionUri $uri -ResourceId "$($vm)_VMNIC0"
         if ($nic) 
         {
-            $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools += $lb.Properties.BackendAddressPools[0]
+            $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools = $lb.Properties.BackendAddressPools[0]
+            Write-Host -ForegroundColor Green  "Adding NIC ipconfig to LB backend address pool"
             New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
                 -ConnectionUri $uri -Force 
         }
@@ -500,9 +593,8 @@ foreach ($vip in $configdata.SlbVIPs) {
 winrm set winrm/config/client '@{TrustedHosts="*"}'
 
 try{
-    $configdataAZVM = [hashtable] (iex (gc .\configFiles\SDNNestedAzHost.psd1 | out-string))
+    $configdataAZVM = [hashtable] (iex (gc .\configFiles\$($configdata.ConfigFileName)\SDNNestedAzHost.psd1 | out-string))
 }catch {} 
-
 
 if ($configdataAZVM.VMLocalAdminSecurePassword){
     $secpasswd = ConvertTo-SecureString $configdataAZVM.VMLocalAdminSecurePassword -AsPlainText -Force
@@ -524,18 +616,18 @@ foreach( $Tenant in $configdata.Tenants)
         Write-host -ForegroundColor yellow "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
         if ( $GreDestination)
         {
-            Invoke-Command  -Computername $configdataAZVM.VMName  -Credential $AzCred {
+            Invoke-Command -Computername $configdataAZVM.VMName  -Credential $AzCred {
                 $cred=$args[0]
                 $PhysicalGwVMName=$args[1]
                 $GreDestination=$args[2]
                 Invoke-Command  -VMName $PhysicalGwVMName -Credential $cred {
                     $GreDestination=$args[0]
-                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false
+                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false 
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -Destination $GreDestination
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $true
                 } -ArgumentList $GreDestination
 
-            } -ArgumentList $cred, $PhysicalGwVMName, $GreDestination
+            } -ArgumentList $LocalAdminCredential, $PhysicalGwVMName, $GreDestination
         }
     }
 
@@ -561,7 +653,7 @@ foreach( $Tenant in $configdata.Tenants)
 
             } -ArgumentList $BgpPeer
     
-        } -ArgumentList $cred, $PhysicalGwVMName, $BgpPeer
+        } -ArgumentList $LocalAdminCredential, $PhysicalGwVMName, $BgpPeer
     }
 
 }

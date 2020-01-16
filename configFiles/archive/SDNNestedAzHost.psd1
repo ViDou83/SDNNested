@@ -6,7 +6,7 @@
     #VMSize                     = "Standard_E8_v3"
     VMSize                      = "Standard_E16_v3"
 
-    VMName                      = "SDN-11282019"
+    VMName                      = "SDN-12192019"
     VMLocalAdminUser            = "vidou"
     VMLocalAdminSecurePassword  = "Azertyuiop!01" 
     ## Azure Accoun t

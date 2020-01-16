@@ -165,11 +165,11 @@ function Add-UnattendFileToVHD {
                         </DomainAccounts>
 "@
 
-    if ( $ComputerName -match "DC" -or $ComputerName -match "GW" ) {
+    if ( $ComputerName -match "DC" -or $ComputerName -match "GW" -or $ComputerName -match "Contoso" -or $ComputerName -match "Fabrikam" ) {
         $UnattendedJoin = $null
     }
 
-    if ( $ComputerName -match "GW"){
+    if ( $ComputerName -match "GW" -or $ComputerName -match "Contoso" -or $ComputerName -match "Fabrikam" ){
         $UnattendedDomainAccount = $null
     }
 
@@ -268,7 +268,7 @@ function New-SdnNestedVm() {
     $CurrentVMLocationPath = "$VMLocation\$VMName"
     $VHDTemplateFile = "$VHDSrcPath\$VHDName"
 
-    Write-Host -ForegroundColor Green "Creating VM $VMName" 
+    Write-Host "Creating VM $VMName on $env:computername" 
 
     if ( !(Test-Path $CurrentVMLocationPath) ) {  
         Write-Host "Creating folder $CurrentVMLocationPath"
@@ -276,6 +276,16 @@ function New-SdnNestedVm() {
     }
 
     Write-Host "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
+    
+    #Optimization to copy locally the syspreped VHDX once and then use it
+    <#
+    if ( ! ( Test-Path "$VMLocation\$VHDName" ) )
+    {
+        Copy-Item -Path $VHDTemplateFile -Destination $VMLocation -Recurse -Force | Out-Null
+    }
+    Copy-Item -Path "$VMLocation\$VHDName" -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
+    #>
+
     Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
     
     $params = @{
@@ -375,7 +385,9 @@ function New-ToRRouter()
                 Write-host -ForegroundColor RED "ERROR: Failded to add Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
             }
         }
+        add-content C:\ToR.txt ""
     } -ArgumentList $TORrouter
+
 }
 
 function Add-vNicIpConfig(){
@@ -433,7 +445,7 @@ function Connect-HostToSDN()
     }
 
     $NextHopSplit = $($NetRoute.NextHop).split(".")
-    $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
+    $ifIndex = (Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
 
     if ( $ifIndex ){
         New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex | Out-Null

@@ -23,7 +23,7 @@
 [CmdletBinding(DefaultParameterSetName = "NoParameters")]
 param(
     [Parameter(Mandatory = $false, ParameterSetName = "ConfigurationFile")]
-    [String] $ConfigurationDataFile = ".\utils\SDNNested-Deploy-Infra.psd1"
+    [String] $ConfigurationDataFile = ".\configfiles\SMALL\SDNNested-Deploy-Infra.psd1"
 )    
 
 import-module .\SDNExpress\SDNExpressModule.psm1 -force
@@ -118,8 +118,6 @@ Write-Host "########"
 Write-Host "############"
 Connect-HostToSDN $configdata.HostSdnNICs $vmswitch.Name $configdata.PublicVIPNetRoute
 
-
-
 <#
     SDN DC DEPLOYMENT
 #>
@@ -161,28 +159,33 @@ $paramsAD = @{
 #Creating DC
 foreach ( $dc in $configdata.DCs) 
 {
-    $paramsAD.VMName = $dc.ComputerName
-    $paramsAD.Nics = $dc.NICs
-    #Creating DC with Desktop env 
-    $paramsAD.VHDName = $configdata.VHDGUIFile
+    $vm = get-vm $dc.Computername -ea silentlycontinue
+    if( $null -eq $vm){
+        $paramsAD.VMName = $dc.ComputerName
+        $paramsAD.Nics = $dc.NICs
+        #Creating DC with Desktop env 
+        $paramsAD.VHDName = $configdata.VHDGUIFile
+        $paramsAD.VMMemory =  $dc.VMMemory
+        $paramsAD.VMProcessorCount = $dc.VMProcessorCount
 
-    New-SdnNestedVm @paramsAD 
+        New-SdnNestedVm @paramsAD 
 
-    Start-VM $dc.ComputerName
+        Start-VM $dc.ComputerName
 
-    WaitLocalVMisBooted $dc.computername $LocalAdminCredential
-    if( $dc -eq $configdata.DCs[0])
-    {
-        New-SDNNestedADDSForest $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
+        WaitLocalVMisBooted $dc.computername $LocalAdminCredential
+        if( $dc -eq $configdata.DCs[0])
+        {
+            New-SDNNestedADDSForest $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
+        }
+        else
+        {
+            Add-SDNNestedADDSDomainController $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
+        }
+        Write-Host  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
+        Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
     }
-    else
-    {
-        Add-SDNNestedADDSDomainController $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
-    }
-    Write-Host  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
-    Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
+    else{ Write-Host -ForegroundColor Yellow "VM=$($vm.Name) already exist - Skipping deployment" }
 }
-
 WaitLocalVMisBooted $configdata.DCs[-1].computername $DomainJoinCredential
 
 <#
@@ -226,55 +229,77 @@ $paramsHOST = @{
 #Creating HYPV Hosts
 foreach ( $node in $configdata.HyperVHosts) 
 {
-    $paramsHOST.VMName = $node.ComputerName
-    $paramsHOST.Nics = $node.NICs
-    $paramsHOST.VMMemory =  $node.VMMemory
-    $paramsHOST.VMProcessorCount = 4
+    $vm = get-vm $node.Computername -ea silentlycontinue
+    if( $null -eq $vm)
+    {
+        $paramsHOST.VMName = $node.ComputerName
+        $paramsHOST.Nics = $node.NICs
+        $paramsHOST.VMMemory =  $node.VMMemory
+        $paramsHOST.VMProcessorCount = $node.VMProcessorCount
 
-    New-SdnNestedVm @paramsHOST
+        New-SdnNestedVm @paramsHOST
 
-    #required for nested virtualization 
-    Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
-    #Required to allow multiple MAC per vNIC
-    Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
+        #required for nested virtualization 
+        Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
+        #Required to allow multiple MAC per vNIC
+        Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
 
-    Write-Host -ForegroundColor Green "Adding  VM S2D DataDisk on $($node.ComputerName)" 
-    Add-VMDataDisk $node.ComputerName $ConfigData.S2DDiskSize $ConfigData.S2DDiskNumber
- 
-    Start-VM $node.ComputerName 
-     
-    WaitLocalVMisBooted $node.ComputerName $DomainJoinCredential 
+        Write-Host -ForegroundColor Green "Adding  VM S2D DataDisk on $($node.ComputerName)" 
+        
+        if( $ConfigData.S2DClusterName )
+        {
+            Add-VMDataDisk $node.ComputerName $ConfigData.S2DDiskSize $ConfigData.S2DDiskNumber
+        }
+        else
+        {
+            Add-VMDataDisk $node.ComputerName $paramsHOST.VMsDiskSize 1
+        }
 
-    $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
-    Add-WindowsFeatureOnVM $node.computername $DomainJoinCredential $FeatureList 
-    
-    Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
-        Write-Host "Adding SDN VMSwitch on $($env:COMPUTERNAME)"
-        New-VMSwitch -NetAdapterName $(Get-Netadapter).Name -SwitchName SDNSwitch -AllowManagementOS $true | Out-Null
-        Get-VMNetworkAdapter -ManagementOS -Name SDNSwitch | Rename-VMNetworkAdapter -NewName MGMT
-        Get-VMNetworkAdapter -ManagementOS -Name MGMT | Set-VMNetworkAdapterVlan -Access -VlanId $args[0]
-        #Cred SSDP for remote administration
-        Write-Host "Allowing CredSSP to manage HYPV host $($env:COMPUTERNAME) from Azure VM"
-        Enable-WSManCredSSP -Role Server -Force | Out-Null
-        Set-VMHost  -EnableEnhancedSessionMode $true
-    } -ArgumentList $Node.NICs[0].VLANID
-    
-    Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
-    #Adding credential to the cache
-    Invoke-Expression -Command `
-        "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
+        Start-VM $node.ComputerName 
+        
+        WaitLocalVMisBooted $node.ComputerName $DomainJoinCredential 
+
+        $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
+        Add-WindowsFeatureOnVM $node.computername $DomainJoinCredential $FeatureList 
+        
+        Invoke-Command -VMName $node.ComputerName -Credential $DomainJoinCredential {
+            Write-Host "Adding SDN VMSwitch on $($env:COMPUTERNAME)"
+            New-VMSwitch -NetAdapterName $(Get-Netadapter).Name -SwitchName SDNSwitch -AllowManagementOS $true | Out-Null
+            Get-VMNetworkAdapter -ManagementOS -Name SDNSwitch | Rename-VMNetworkAdapter -NewName MGMT
+            Get-VMNetworkAdapter -ManagementOS -Name MGMT | Set-VMNetworkAdapterVlan -Access -VlanId $args[0]
+            #Cred SSDP for remote administration
+            Write-Host "Allowing CredSSP to manage HYPV host $($env:COMPUTERNAME) from Azure VM"
+            Enable-WSManCredSSP -Role Server -Force | Out-Null
+            Set-VMHost  -EnableEnhancedSessionMode $true
+        } -ArgumentList $Node.NICs[0].VLANID
+        
+        Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
+        #Adding credential to the cache
+        Invoke-Expression -Command `
+            "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
+    }
+    else{ Write-Host -ForegroundColor Yellow "VM=$($vm.Name) already exist - Skipping deployment" }
 }
 
 WaitLocalVMisBooted $configdata.HyperVHosts[-1].Computername $DomainJoinCredential
 
-Write-Host "############"
-Write-Host "########"
-Write-Host "####"
-Write-Host "### Configuring S2D Cluster "
-Write-Host "####"
-Write-Host "########"
-Write-Host "############"
-New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName 
+if( $ConfigData.S2DClusterName )
+{
+    Write-Host "############"
+    Write-Host "########"
+    Write-Host "####"
+    Write-Host "### Configuring S2D Cluster "
+    Write-Host "####"
+    Write-Host "########"
+    Write-Host "############"
+
+    $ClusterIp=((Resolve-DnsName $ConfigData.S2DClusterName  -Server $configdata.DCs[-1].computername -Type A)[-1]).IpAddress
+    if( $ClusterIp -ne $ConfigData.S2DClusterIP )
+    {
+        New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName 
+    }
+    else{ Write-Host -ForegroundColor Yellow "$($ConfigData.S2DClusterName) already exist - Skipping S2D deployment" }
+}
 
 Write-Host "############"
 Write-Host "########"
@@ -306,98 +331,91 @@ $paramsGW = @{
     'ProductKey'          = $ConfigData.ProductKey;
 }
 
-
 #Creating Gw Hosts
 foreach ( $GW in $configdata.TenantInfraGWs) {
-    $paramsGW.VMName = $GW.ComputerName
-    $paramsGW.Nics = $GW.NICs
+    $vm = get-vm $GW.Computername -ea silentlycontinue
+    if( $null -eq $vm)
+    {
+        $paramsGW.VMName = $GW.ComputerName
+        $paramsGW.Nics = $GW.NICs
 
-    New-SdnNestedVm @paramsGW 
+        New-SdnNestedVm @paramsGW 
 
-    Start-VM $GW.ComputerName
+        Start-VM $GW.ComputerName
 
-    WaitLocalVMisBooted $GW.ComputerName $LocalAdminCredential
+        WaitLocalVMisBooted $GW.ComputerName $LocalAdminCredential
 
-    foreach ( $TenantvGW in $configdata.TenantvGWs) {
-        if ( $TenantvGW.Tenant -eq $GW.Tenant ) 
-        {
+        foreach ( $TenantvGW in $configdata.TenantvGWs) {
+            if ( $TenantvGW.Tenant -eq $GW.Tenant ) 
+            {
 
-            Add-WindowsFeatureOnVM $GW.ComputerName $LocalAdminCredential RemoteAccess
-            <#
-            invoke-Command -VMName $GW.ComputerName -Credential $LocalAdminCredential {
-                $TenantvGW = $args[0]
-                Write-Host -ForegroundColor Yellow "Checking IP config from $($TenantvGW.VirtualGwName) config"
-            
-                Write-Host -ForegroundColor Green "Adding Remote Access feature on $env:COMPUTERNAME"
-                $res = Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools
+                Add-WindowsFeatureOnVM $GW.ComputerName $LocalAdminCredential RemoteAccess
 
-                if ( $res.RestartNeeded -eq "Yes" ) { Restart-Computer -Force; Write-host "Rebooting $env:COMPUTERNAME" }
-            } -ArgumentList $TenantvGW
-            #>
+                invoke-Command -VMName  $GW.ComputerName  -Credential $LocalAdminCredential {
+                    $TenantvGW = $args[0]
 
-            invoke-Command -VMName  $GW.ComputerName  -Credential $LocalAdminCredential {
-                $TenantvGW = $args[0]
+                    $tunnelMode = $false                   
+                    if ( $TenantvGW.Type -eq "L3") {
+                        $VpnType = "RoutingOnly"    
+                    }
+                    elseif ( $TenantvGW.Type -eq "GRE") {
+                        $VpnType = "VpnS2S"   
+                        $tunnelMode = $true                                    
+                    }
+                    Write-Host -ForegroundColor Green "Installing Remote Access VPNtype=$VpnType on $env:COMPUTERNAME"
 
-                $tunnelMode = $false                   
-                if ( $TenantvGW.Type -eq "L3") {
-                    $VpnType = "RoutingOnly"    
-                }
-                elseif ( $TenantvGW.Type -eq "GRE") {
-                    $VpnType = "VpnS2S"   
-                    $tunnelMode = $true                                    
-                }
-                Write-Host -ForegroundColor Green "Installing Remote Access VPNtype=$VpnType on $env:COMPUTERNAME"
+                    Install-RemoteAccess -VpnType $VpnType  
+                
+                    $run = (Get-Service RemoteAccess).status
 
-                Install-RemoteAccess -VpnType $VpnType  
-            
-                $run = (Get-Service RemoteAccess).status
+                    if ( $run -ne "Running") { Start-Service RemoteAccess }
 
-                if ( $run -ne "Running") { Start-Service RemoteAccess }
-
-                if (  $tunnelMode ) {
-                    Write-Host -ForegroundColor Yellow "Configuring $($TenantvGW.Type) tunnel on $env:COMPUTENAME"
-                    if ( $TenantvGW.Type -eq "GRE") {
-                        #GRE VIP POOL
-                        if ( ! ((Get-NetIPAddress -AddressFamily IPv4).IPAddress -match $TenantvGW.GrePeer) ) { 
-                            Write-Host -ForegroundColor Yellow "IP Address $($TenantvGW.GrePeer) is missing so adding it"
-                            New-NetIPAddress -InterfaceIndex (Get-NetAdapter).ifIndex -IPAddress $TenantvGW.GrePeer -PrefixLength 32 | Out-Null
+                    if (  $tunnelMode ) {
+                        Write-Host -ForegroundColor Yellow "Configuring $($TenantvGW.Type) tunnel on $env:COMPUTENAME"
+                        if ( $TenantvGW.Type -eq "GRE") {
+                            #GRE VIP POOL
+                            if ( ! ((Get-NetIPAddress -AddressFamily IPv4).IPAddress -match $TenantvGW.GrePeer) ) { 
+                                Write-Host -ForegroundColor Yellow "IP Address $($TenantvGW.GrePeer) is missing so adding it"
+                                New-NetIPAddress -InterfaceIndex (Get-NetAdapter).ifIndex -IPAddress $TenantvGW.GrePeer -PrefixLength 32 | Out-Null
+                            }
+                            $GrepVIPPool = "2.2.2.2"
+                            
+                            Add-VpnS2SInterface -Name FabrikamGRE -Destination $GrepVIPPool -SourceIpAddress $TenantvGW.GrePeer -GreKey $TenantvGW.PSK `
+                                -GreTunnel -IPv4Subnet "$($TenantvGW.RouteDstPrefix):10"
                         }
-                        $GrepVIPPool = "2.2.2.2"
+                    }
+                    # 
+                    if ( $TenantvGW.BGPEnabled) {
+                        if ( ! (Get-NetIPAddress -AddressFamily IPv4).IPAddress -match $TenantvGW.BgpPeerIpAddress ) { 
+                            Write-Host -ForegroundColor Yellow "IP Address $($TenantvGW.PeerIpAddrGW) is missing so adding it"
+                            New-NetIPAddress -InterfaceIndex (Get-NetAdapter).ifIndex -IPAddress $TenantvGW.BgpPeerIpAddress -PrefixLength 24
+                        }
                         
-                        Add-VpnS2SInterface -Name FabrikamGRE -Destination $GrepVIPPool -SourceIpAddress $TenantvGW.GrePeer -GreKey $TenantvGW.PSK `
-                            -GreTunnel -IPv4Subnet "$($TenantvGW.RouteDstPrefix):10"
-                    }
-                }
-                # 
-                if ( $TenantvGW.BGPEnabled) {
-                    if ( ! (Get-NetIPAddress -AddressFamily IPv4).IPAddress -match $TenantvGW.BgpPeerIpAddress ) { 
-                        Write-Host -ForegroundColor Yellow "IP Address $($TenantvGW.PeerIpAddrGW) is missing so adding it"
-                        New-NetIPAddress -InterfaceIndex (Get-NetAdapter).ifIndex -IPAddress $TenantvGW.BgpPeerIpAddress -PrefixLength 24
-                    }
-                    
-                    try {
-                        $bgpRouter = Get-BgpRouter -ErrorAction Ignore
-                    }
-                    catch { }
-                    
-                    if ( ! $bgpRouter ) {
-                        Add-BgpRouter -BgpIdentifier $TenantvGW.BgpPeerIpAddress -LocalASN $TenantvGW.BgpPeerAsNumber                        
-                    }
-                    
-                    try {
-                        $BpgPeer = Get-BgpPeer -Name $TenantvGW.VirtualGwName -ErrorAction Ignore
-                    }
-                    catch { }
+                        try {
+                            $bgpRouter = Get-BgpRouter -ErrorAction Ignore
+                        }
+                        catch { }
+                        
+                        if ( ! $bgpRouter ) {
+                            Add-BgpRouter -BgpIdentifier $TenantvGW.BgpPeerIpAddress -LocalASN $TenantvGW.BgpPeerAsNumber                        
+                        }
+                        
+                        try {
+                            $BpgPeer = Get-BgpPeer -Name $TenantvGW.VirtualGwName -ErrorAction Ignore
+                        }
+                        catch { }
 
-                    if ( ! $BpgPeer ) {                 
-                        Add-BgpPeer -Name $TenantvGW.VirtualGwName -LocalIPAddress $TenantvGW.BgpPeerIpAddress -LocalASN $TenantvGW.BgpPeerAsNumber `
-                            -PeerIPAddress $TenantvGW.BgpLocalRouterIP[0] -PeerASN $($TenantvGW.BgpLocalExtAsNumber).split(".")[1] -OperationMode Mixed `
-                            -PeeringMode Automatic
-                    }   
-                }
-            } -ArgumentList $TenantvGW
-        }     
+                        if ( ! $BpgPeer ) {                 
+                            Add-BgpPeer -Name $TenantvGW.VirtualGwName -LocalIPAddress $TenantvGW.BgpPeerIpAddress -LocalASN $TenantvGW.BgpPeerAsNumber `
+                                -PeerIPAddress $TenantvGW.BgpLocalRouterIP[0] -PeerASN $($TenantvGW.BgpLocalExtAsNumber).split(".")[1] -OperationMode Mixed `
+                                -PeeringMode Automatic
+                        }   
+                    }
+                } -ArgumentList $TenantvGW
+            }     
+        }
     }
+    else{ Write-Host -ForegroundColor Yellow "VM=$($vm.Name) already exist - Skipping deployment" }
 }
 
 Write-Host "############"
@@ -410,8 +428,11 @@ Write-Host "############"
 #Creating ToR Router
 foreach ( $ToR in $configdata.TORrouter) 
 {
-
-    $credential = $DomainJoinCredential
+    $credential = $LocalAdminCredential
+    if ( $ToR.ComputerName -eq $configdata.DCs[0].computername )
+    { 
+        $credential = $DomainJoinCredential 
+    }
 
     if ( ! (get-vm $ToR.ComputerName -ErrorAction silentlycontinue ) ){
         $paramsToR = @{
@@ -438,16 +459,32 @@ foreach ( $ToR in $configdata.TORrouter)
 
         New-SdnNestedVm @paramsToR
 
-        $credential = $LocalAdminCredential
         Start-VM $ToR.ComputerName
 
         WaitLocalVMisBooted $ToR.ComputerName $credential
     }
 
-    New-ToRrouter $configdata.TORrouter.ComputerName $credential $ToR
+    if ( ! ( icm -VMName $ToR.ComputerName -Credential $credential { if ( Test-Path C:\ToR.txt){$true} } ) )
+    {
+        New-ToRrouter $configdata.TORrouter.ComputerName $credential $ToR
 
+        #fixing VLAN
+        $vNICs = Get-VMNetworkAdapter -VMName $ToR.ComputerName
+
+        foreach( $vNIC in $vNICs)
+        {
+            foreach( $NIC in $ToR.NICs)
+            {  
+                foreach( $IPAddress in $vNIC.IPAddresses){
+                    if( $NIC.IPAddress  -match $IPAddress ){
+                        $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NIC.VlanID
+                    }
+                }
+            }
+        }
+    }
+    else{ Write-Host -ForegroundColor Yellow "TOR router already configured - Skipping deployment" }
 }
-
 
 Write-Host "############"
 Write-Host "########"
@@ -457,8 +494,11 @@ Write-Host "####"
 Write-Host "########"
 Write-Host "############"
 #
-Write-Host -ForegroundColor Yellow "Adding entry in Azure VM's host file to manage S2D and SDN with WAC"
-Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
+if( $ConfigData.S2DClusterName )
+{
+    Write-Host -ForegroundColor Yellow "Adding entry in Azure VM's host file to manage S2D and SDN with WAC"
+    Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
+}
 
 Write-Host -ForegroundColor Green "Creating SMBSHare containing VHDX template to use with SDNExpress deployment"
 New-SmbShare -Name Template -Path $configdata.VHDPath -FullAccess Everyone -ErrorAction SilentlyContinue | out-Null
@@ -475,17 +515,22 @@ else
     $LocalAzureVMCred = (Get-Credential -Message $Msg -Credential $account)   
 }
 
-
 #Misc things
-Invoke-Command -VMName $configdata.HyperVHosts[0].ComputerName  -Credential $DomainJoinCredential {
-    Write-Host -ForegroundColor Green "Mapping SMBSHare on $env:COMPUTERNAME to Z:"
-    $AzureVMName = $args[0]; $Cred = $args[1]
-    New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$AzureVMName\Template"  -Credential $Cred -Persistent $true
+Invoke-Command -VMName $configdata.HyperVHosts.ComputerName  -Credential $DomainJoinCredential {
+    $Cred = $args[0]
+    $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
 
+    Write-Host -ForegroundColor Green "$env:COMPUTERNAME :Mapping SMBSHare from \\$LocalVMName\template to Z:"
+    New-SmbGlobalMapping -LocalPath Z: -RemotePath "\\$LocalVMName\Template"  -Credential $Cred -Persistent $true
+
+    Write-Host -ForegroundColor Green "$env:COMPUTERNAME: Adding Defender files exclusion"
     Add-MpPreference -ExclusionExtension "vhd"
     Add-MpPreference -ExclusionExtension "vhdx"
 
-} -ArgumentList $env:COMPUTERNAME, $LocalAzureVMCred
+    if( ! ( Test-Path "C:\ClusterStorage" ) ){
+        get-disk | ? OperationalStatus -eq offline | Initialize-Disk -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume | Out-Null
+    }
+} -ArgumentList $LocalAzureVMCred
 
 Write-Host -ForegroundColor Yellow "Adding a vNIC called Mirror on $($configdata.SwitchName) for port Mirroring purpose" -NoNewline
 Write-Host -ForegroundColor Yellow "Run Wireshark upon this vNIC to see all SDN traffic"

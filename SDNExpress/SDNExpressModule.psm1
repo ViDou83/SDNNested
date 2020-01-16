@@ -1578,8 +1578,6 @@ function New-SDNExpressGatewayPool {
 #     # #    # #    # #     # #    #   #   #      ##  ## #    #   #   
 #     # #####  #####   #####  #    #   #   ###### #    # #    #   #   
                                                                        
-
-
 Function New-SDNExpressGateway {
     param(
         [String] $RestName,

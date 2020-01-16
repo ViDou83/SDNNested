@@ -3,7 +3,7 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
-    VMLocation           = "C:\ClusterStorage\S2D_CSV1\VMs"
+    VMLocation           = "C:\VMs"
     
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
@@ -83,13 +83,17 @@
     @(
         @{
             HypvHostname = "SDN-HOST02.SDN.LAB"
+            VHDFile      = "Win2019-Core-Container.vhdx"
             Tenant       = "Contoso"
-            Name         = 'Contoso-VM01'
-            roles        = @("Web-Server", "Web-Mgmt-Service")
-            VIP          = "41.40.40.8"             
+            Name         = 'Contoso-CH01'
+            VMMemory             = 4GB
+            VMProcessorCount     = 4
+            roles        = @("ContainerHost")
+            VIP          = "41.40.40.8"
+            ContainersIpPool = "172.16.1.32/29"             
             NICs         = @( 
                 @{ 
-                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
+                    Name = "Ethernet"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
                     DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
@@ -97,36 +101,50 @@
         },
         @{
             HypvHostname = "SDN-HOST01.SDN.LAB"
+            VHDFile      = "Win2019-Core-Container.vhdx"
             Tenant       = "Contoso"
-            Name         = 'Contoso-VM02'
-            roles        = @("Web-Server", "Web-Mgmt-Service")
+            Name         = 'Contoso-CH02'
+            VMMemory             = 4GB
+            VMProcessorCount     = 4
+            roles        = @("ContainerHost")
+            VIP          = "41.40.40.8"
+            ContainersIpPool = "172.16.1.40/29"             
             NICs         = @( 
                 @{ 
-                    Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
+                    Name = "Ethernet"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
                     DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
         },
         @{
             HypvHostname = "SDN-HOST02.SDN.LAB"
+            VHDFile      = "Win2019-Core-Container.vhdx"
             Tenant       = "Fabrikam"
-            Name         = 'Fabrikam-VM01'
-            roles        = @("Web-Server", "Web-Mgmt-Service")            
+            Name         = 'Fabrikam-CH01'
+            VMMemory             = 4GB
+            VMProcessorCount     = 4
+            roles        = @("ContainerHost")
+            VIP          = "41.40.40.9"
+            ContainersIpPool = "172.16.1.32/29"            
             NICs         = @( 
                 @{ 
-                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
+                    Name = "Ethernet"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
                     DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )
         },
         @{
             HypvHostname = "SDN-HOST01.SDN.LAB"
+            VHDFile      = "Win2019-Core-Container.vhdx"
             Tenant       = "Fabrikam"            
-            Name         = 'Fabrikam-VM02'
-            roles        = @("Web-Server", "Web-Mgmt-Service")            
+            VMMemory             = 4GB
+            VMProcessorCount     = 4
+            VIP          = "41.40.40.9"     
+            ContainersIpPool = "172.16.1.40/29"                 
+            roles        = @("ContainerHost")
             NICs         = @( 
                 @{ 
-                    Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
+                    Name = "Ethernet"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
                     DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
@@ -143,7 +161,7 @@
             FrontendPort        = 80
             BackendPort         = 80   
             Protocol            = "TCP"
-            TenantVMs           = @("Contoso-VM01", "Contoso-VM02")     
+            TenantVMs           = @("Contoso-CH01", "Contoso-CH02")     
         },
         @{
             Tenant              = "Fabrikam"
@@ -153,7 +171,7 @@
             FrontendPort        = 80
             BackendPort         = 80
             Protocol            = "TCP"
-            TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
+            TenantVMs           = @("Fabrikam-CH01", "Fabrikam-CH02")  
         }
     )
     
