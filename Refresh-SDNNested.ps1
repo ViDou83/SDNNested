@@ -64,7 +64,7 @@ foreach ( $node in $Nodes) {
             }
         }
 
-        if ( (Test-Path "C:\clusterStorage") )
+        if ( Get-CLuster -ea SilentlyContinue )
         {
             #Adding all VMs to cluster 
             $VMids =  (get-vm).VMId
