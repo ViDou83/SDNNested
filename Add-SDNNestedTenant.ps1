@@ -20,27 +20,25 @@ if (!$feature.Installed) {
 }
 
 import-module networkcontroller  
-#import-module .\utils\SDN-Deploy-Module.psm1 -force
 import-module .\utils\SDNNested-Module.psm1
-
-import-module .\SDNExpress\SDNExpressModule.psm1
+#import-module .\SDNExpress\SDNExpressModule.psm1
 
 # Script version, should be matched with the config files
 $ScriptVersion = "2.0"
 
 #Validating passed in config files
 if ($psCmdlet.ParameterSetName -eq "ConfigurationFile") {
-    Write-Host "Using configuration file passed in by parameter."    
+   Write-SDNNestedLog "Using configuration file passed in by parameter."    
     $configdata = [hashtable] (iex (gc $ConfigurationDataFile | out-string))
 }
 elseif ($psCmdlet.ParameterSetName -eq "ConfigurationData") {
-    Write-Host "Using configuration data object passed in by parameter."    
+   Write-SDNNestedLog "Using configuration data object passed in by parameter."    
     $configdata = $configurationData 
 }
 
 if ($configdata.ScriptVersion -ne $scriptversion) {
-    Write-Host "Configuration file version $($ConfigData.ScriptVersion) is not compatible with this version of SDN express." -NoNewline
-    Write-Host "Please update your config file to match the version $scriptversion example."
+   Write-SDNNestedLog "Configuration file version $($ConfigData.ScriptVersion) is not compatible with this version of SDN express." -NoNewline
+   Write-SDNNestedLog "Please update your config file to match the version $scriptversion example."
     return
 }
 
@@ -73,7 +71,7 @@ foreach ($ln in $logicalnetworks) {
   
 foreach ($Tenant in $configdata.Tenants) {
     #Create the Virtual Subnet  
-    Write-Host -ForegroundColor Yellow "Configuring and VNET for $($Tenant.Name)"
+   Write-SDNNestedLog  "Configuring and VNET for $($Tenant.Name)"
     $vsubnet = new-object Microsoft.Windows.NetworkController.VirtualSubnet  
     $vsubnet.ResourceId = $Tenant.TenantVirtualSubnetId  
     $vsubnet.Properties = new-object Microsoft.Windows.NetworkController.VirtualSubnetProperties  
@@ -95,7 +93,7 @@ foreach ($Tenant in $configdata.Tenants) {
 
     foreach ($Gw in $configdata.TenantvGWs) {    
         if ( $Gw.Tenant -eq $Tenant.Name) { 
-            Write-Host -ForegroundColor Yellow "Configuring Virutal GW for $($Tenant.Name)"
+           Write-SDNNestedLog  "Configuring Virutal GW for $($Tenant.Name)"
             
             # Create a new object for Tenant Virtual Gateway  
             $VirtualGWProperties = New-Object Microsoft.Windows.NetworkController.VirtualGatewayProperties   
@@ -207,7 +205,7 @@ foreach ($Tenant in $configdata.Tenants) {
 
             #Configure BGP on the vGW 
             if ( $gw.BGPEnabled -eq $True) {     
-                Write-Host -ForegroundColor Yellow "Configuring BGP on vGW for $($Tenant.name)"
+               Write-SDNNestedLog  "Configuring BGP on vGW for $($Tenant.name)"
 
                 # Create a new object for the Tenant BGP Router  
                 $bgpRouterproperties = New-Object Microsoft.Windows.NetworkController.VGwBgpRouterProperties   
@@ -271,7 +269,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
     
     if ($null -eq $vm) 
     { 
-        Write-Host -ForegroundColor Green "Adding VM=$($TenantVM.Name) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
+        Write-SDNNestedLog  "Adding VM=$($TenantVM.Name) on HYPV=$($TenantVM.HypvHostname) for tenant=$($TenantVM.tenant)"
         $paramsTenant.VMName = $TenantVM.Name
         $paramsTenant.NICs = $TenantVM.NICs
         if ( $TenantVM.VHDFile){  $paramsTenant.VHDName = $TenantVM.VHDFile}
@@ -302,7 +300,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
             import-module networkcontroller  
 
             if( get-cluster -ea SilentlyContinue ){ 
-                Write-Host -ForegroundColor Green  "Adding VM=$($TenantVM.Name) to the failover cluster"            
+               Write-SDNNestedLog   "Adding VM=$($TenantVM.Name) to the failover cluster"            
                 Get-VM -VMName $TenantVM.Name | Add-ClusterVirtualMachineRole 
             }
 
@@ -310,13 +308,13 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 Start-VM $TenantVM.Name -ErrorAction stop
             }
             catch { 
-                Write-Host -ForegroundColor Red "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
+               Write-SDNNestedLog  "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
                 break;
             }
             
             WaitLocalVMisBooted $TenantVM.Name $cred
 
-            Write-Host "Stopping VM $($TenantVM.Name)"
+           Write-SDNNestedLog "Stopping VM $($TenantVM.Name)"
             Stop-VM -VMName $TenantVM.Name -Force 
         } -ArgumentList $paramsTenant,$TenantVM, $cred
 
@@ -347,7 +345,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
             $vmnicproperties.IpConfigurations = @($ipconfiguration)
 
-            Write-host -ForegroundColor Yellow "Pushing  $($TenantVM.Name) NIC config to REST API"
+           Write-SDNNestedLog  "Pushing  $($TenantVM.Name) NIC config to REST API"
 
             $nic = New-NetworkControllerNetworkInterface -ResourceID $vmnicResourceId -Properties $vmnicproperties -ConnectionUri $uri -Force
         }
@@ -366,7 +364,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                                 
             $CurrentFeature = Get-VMSwitchExtensionPortFeature -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
 
-            Write-host -ForegroundColor Yellow "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
+           Write-SDNNestedLog  "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
             
             $nic = Get-NetworkControllerNetworkInterface -ResourceID "$($TenantVM.Name)_VMNIC0" -ConnectionUri $uri 
             
@@ -398,7 +396,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
             $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress   
             
-            Write-Host "Starting VM $($TenantVM.Name)"
+           Write-SDNNestedLog "Starting VM $($TenantVM.Name)"
             Start-VM $TenantVM.Name
             WaitLocalVMisBooted $TenantVM.Name $cred
         } -ArgumentList $TenantVM, $uri, $cred
@@ -431,7 +429,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 $ip = "$($ip.split(".")[0])" + "."  + "$($ip.split(".")[1])" + "." + "$($ip.split(".")[2])" + "."  + "$LastByte"
             }
 
-            Write-Host -ForegroundColor Green  "Adding ContainerIpPool=$($TenantVM.ContainersIpPool) to $($TenantVM.Name) VMNic Object"
+           Write-SDNNestedLog   "Adding ContainerIpPool=$($TenantVM.ContainersIpPool) to $($TenantVM.Name) VMNic Object"
             $nic = New-NetworkControllerNetworkInterface -ResourceID $nic.resourceid -Properties $nic.properties -ConnectionUri $uri -Force
 
             Invoke-Command -ComputerName $TenantVM.HypvHostname {
@@ -450,14 +448,14 @@ foreach ($TenantVM in $configdata.TenantVMs)
                     get-service docker |  %{ if($_.Status -ne "Running"){ Start-Service docker} }
                     cd c:\temp 
                     
-                    Write-Host  -ForegroundColor Green "Creating docker custom IIS container image from docker file iis-site"
+                   Write-SDNNestedLog   "Creating docker custom IIS container image from docker file iis-site"
                     docker build -f C:\temp\iis-site -t iis-site . 
                     
-                    Write-Host  -ForegroundColor Green "Creating docker l2bridge network"
+                   Write-SDNNestedLog   "Creating docker l2bridge network"
                     docker network create -d l2bridge -o com.docker.network.windowsshim.interface="Ethernet" --subnet="172.16.1.0/24" `
                         --gateway="172.16.1.1" MyContainerOverlayNetwork
 
-                    Write-Host -ForegroundColor Green "Running $($ContainersIPs.count) containers"
+                   Write-SDNNestedLog  "Running $($ContainersIPs.count) containers"
                     foreach ( $IP in $ContainersIPs){
                         docker run -d --restart always --network=MyContainerOverlayNetwork --ip="$IP" -v C:\temp\:C:\temp `
                             -e CONTAINER_HOST=$(hostname) iis-site powershell C:\temp\GenIISDefault.ps1          
@@ -467,14 +465,14 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
                     $VIP=(Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "172.16.1.").IPAddress
                     $endpoints = Get-HnsEndpoint
-                    Write-Host -ForegroundColor Green "Creating LoadBalancer on Container Host using HNVv2 API "
+                   Write-SDNNestedLog  "Creating LoadBalancer on Container Host using HNVv2 API "
                     New-HnsLoadBalancer -InternalPort 80 -ExternalPort 80 -Endpoints $endpoints.Id -Protocol 6 -Vip $VIP -DSR
 
                 } -ArgumentList $ContainersIPs
             } -ArgumentList $ContainersIPs, $TenantVM, $cred
         }
         else {
-            Write-Host -ForegroundColor Green  "Adding required features on VM $($TenantVM.Name)"
+           Write-SDNNestedLog   "Adding required features on VM $($TenantVM.Name)"
             
             Invoke-Command -ComputerName $TenantVM.HypvHostname {
                 $TenantVM = $args[0]
@@ -504,7 +502,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 }
 
                 if( get-cluster -ea SilentlyContinue ){ 
-                    Write-Host -ForegroundColor Green  "Move VM=$($TenantVM.Name) to the node configured"                
+                   Write-SDNNestedLog   "Move VM=$($TenantVM.Name) to the node configured"                
                     Get-VM $TenantVM.Name | Move-ClusterVirtualMachineRole -Node $TenantVM.HypvHostname -ErrorAction SilentlyContinue
                 } 
             } -ArgumentList $TenantVM, $cred
@@ -512,7 +510,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
     }
     else {
-        Write-Host -ForegroundColor Yellow "VM $($TenantVM.Name) already exist on $($vm.computername)"
+       Write-SDNNestedLog  "VM $($TenantVM.Name) already exist on $($vm.computername)"
     }
 }
 
@@ -579,12 +577,12 @@ foreach ($vip in $configdata.SlbVIPs) {
         if ($nic) 
         {
             $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools = $lb.Properties.BackendAddressPools[0]
-            Write-Host -ForegroundColor Green  "Adding NIC ipconfig to LB backend address pool"
+           Write-SDNNestedLog   "Adding NIC ipconfig to LB backend address pool"
             New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
                 -ConnectionUri $uri -Force 
         }
         else {
-            Write-host -ForegroundColor yellow "SLB: Failed to add $vm NIC to the VIP BackendAddressPools. NetworkControllerNetworkInterface does not exist for $vm. "
+           Write-SDNNestedLog  "SLB: Failed to add $vm NIC to the VIP BackendAddressPools. NetworkControllerNetworkInterface does not exist for $vm. "
         }
     }
 }
@@ -613,7 +611,7 @@ foreach( $Tenant in $configdata.Tenants)
     {
         $GreDestination = $vgw.Properties.NetworkConnections.properties.SourceIPAddress
 
-        Write-host -ForegroundColor yellow "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
+       Write-SDNNestedLog  "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
         if ( $GreDestination)
         {
             Invoke-Command -Computername $configdataAZVM.VMName  -Credential $AzCred {
@@ -635,7 +633,7 @@ foreach( $Tenant in $configdata.Tenants)
 
     if( $BgpPeer)
     {
-        Write-host -ForegroundColor yellow "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
+       Write-SDNNestedLog  "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
         Invoke-Command  -Computername $configdataAZVM.VMName  -Credential $AzCred { 
             $cred=$args[0]
             $PhysicalGwVMName=$args[1]

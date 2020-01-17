@@ -3,7 +3,7 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
-    VMLocation           = "C:\VMs"
+    VMLocation           = "D:\VMs"
     
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
@@ -176,6 +176,6 @@
     )
     
 
-    RestURI = "https://NCFABRIC.SDN.LAB"
+    RestURI = "https://NCNORTHBOUND.SDN.LAB"
 
 }

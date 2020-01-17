@@ -4,6 +4,7 @@ Param(
 )
 
 Import-Module -Name Az.Compute
+Import-Module -Name .\utils\SDNNested-Module.psm1
 
 $Connected = Get-AzSubscription -ErrorAction Continue -OutVariable null
 if ( $Connected ) {
@@ -18,17 +19,17 @@ $ScriptVersion = "2.0"
 
 #Validating passed in config files
 if ($psCmdlet.ParameterSetName -eq "ConfigurationFile") {
-    Write-Host "Using configuration file passed in by parameter."    
+   Write-SDNNestedLog "Using configuration file passed in by parameter."    
     $configdata = [hashtable] (iex (gc $ConfigurationDataFile | out-string))
 }
 elseif ($psCmdlet.ParameterSetName -eq "ConfigurationData") {
-    Write-Host "Using configuration data object passed in by parameter."    
+   Write-SDNNestedLog "Using configuration data object passed in by parameter."    
     $configdata = $configurationData 
 }
 
 if ($Configdata.ScriptVersion -ne $scriptversion) {
-    Write-Host "Configuration file $ConfigurationDataFile version $($ConfigData.ScriptVersion) is not compatible with this version of SDN express."
-    Write-Host "Please update your config file to match the version $scriptversion example."
+   Write-SDNNestedLog "Configuration file $ConfigurationDataFile version $($ConfigData.ScriptVersion) is not compatible with this version of SDN express."
+   Write-SDNNestedLog "Please update your config file to match the version $scriptversion example."
     return
 }
 
@@ -60,7 +61,7 @@ $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdmi
 
 $VNET = Get-AzVirtualNetwork -Name $VnetName -ResourceGroupName $ResourceGroupName
 if ( $null -eq $VNET ) {
-    Write-Host -ForegroundColor Yellow "No VNET found in $ResourceGroupName so going to create one"
+   Write-SDNNestedLog  "No VNET found in $ResourceGroupName so going to create one"
     
     $SubnetName = Read-Host "SubnetName(ex:MySubnet)"
     $VnetAddressPrefix = Read-Host "Prefix(ex:10.0.0.0/16)"
@@ -100,18 +101,18 @@ $VirtualMachine = Set-AzVMSourceImage -VM $VirtualMachine -PublisherName 'Micros
 $VirtualMachine = Add-AzVMNetworkInterface -VM $VirtualMachine -Id $NIC.Id
 $VirtualMachine = Set-AzVMOSDisk -StorageAccountType $storageType -VM $VirtualMachine -CreateOption "FromImage"
 
-Write-Host -ForegroundColor Green "Creating the AZ VM $VMName"
+Write-SDNNestedLog  "Creating the AZ VM $VMName"
 
 New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName `
     -VM $VirtualMachine -Verbose    
 
-Write-Host -ForegroundColor Green "AZ VM $VMName successfully created"
+Write-SDNNestedLog  "AZ VM $VMName successfully created"
 
 $VirtualMachine = get-AzVm -VMName $VMName
 
 $VirtualMachine | Stop-AzVM -Force
 
-Write-Host -ForegroundColor Green "AZ VM $VMName successfully stopped to add SSD data disk"
+Write-SDNNestedLog  "AZ VM $VMName successfully stopped to add SSD data disk"
 
 $AzDiskConfig = New-AzDiskConfig -Location $LocationName -DiskSizeGB $configdata.DiskSizeGB `
     -AccountType $storageType -CreateOption Empty 
@@ -121,13 +122,13 @@ for ($i = 0; $i -lt $configdata.DiskNumber; $i++) {
         -DiskName "$($VMName)_DataDisk$i"
     $VirtualMachine = Add-AzVMDataDisk -Name "$($VMName)_DataDisk$i" -Caching 'ReadWrite' -Lun $i `
         -ManagedDiskId $AzDisk.Id -CreateOption Attach -VM $VirtualMachine
-    Write-Host -ForegroundColor Green "AZ VM $VMName SSD Disk $i successfully added"
+   Write-SDNNestedLog  "AZ VM $VMName SSD Disk $i successfully added"
         
 }
 
 Update-AzVM -ResourceGroupName $ResourceGroupName -VM $VirtualMachine
 
-Write-Host -ForegroundColor Green "AZ VM $VMName  successfully updated"
+Write-SDNNestedLog  "AZ VM $VMName  successfully updated"
 
 $VirtualMachine | Start-AzVM
 
@@ -141,7 +142,7 @@ netsh advfirewall firewall add rule name= WinRMHTTPS dir=in action=allow protoco
 "
 Add-Content $env:temp\injectedscript.ps1 $Content
 
-Write-Host -ForegroundColor Yellow "AZ VM $VMName  Adding WinRM Firewall rules"
+Write-SDNNestedLog  "AZ VM $VMName  Adding WinRM Firewall rules"
 
 Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -VMName $VMName -ScriptPath $env:temp\injectedscript.ps1 `
     -CommandId 'RunPowerShellScript'
@@ -195,7 +196,7 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
         cp Z:\Template\*.vhdx "$($DriveLetter):\VMs\Template" 
     }
     else{
-        Write-Host -ForegroundColor Yellow "Cannot get VHDX Template from $AZFileShare. You need to place it manually to $($DriveLetter):\VMs\Template"
+       Write-SDNNestedLog  "Cannot get VHDX Template from $AZFileShare. You need to place it manually to $($DriveLetter):\VMs\Template"
     }
 
     if ( Test-Path "Z:\apps") {
@@ -208,8 +209,8 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
 
 } -ArgumentList $configdata
 
-Write-Host -ForegroundColor Green "AZ VM $VMName is running and can be RDP on $($PIP.DnsSettings.Fqdn)"
-Write-Host "mstsc /v:$($PIP.DnsSettings.Fqdn)"
+Write-SDNNestedLog  "AZ VM $VMName is running and can be RDP on $($PIP.DnsSettings.Fqdn)"
+Write-SDNNestedLog "mstsc /v:$($PIP.DnsSettings.Fqdn)"
 
-Write-Host -ForegroundColor Yellow `
+Write-SDNNestedLog  `
     "You are ready to deploy SDN Stack. Before running the SDNNEsted.ps1 script please ensure to have VHD template uploaded to the AzureVM"

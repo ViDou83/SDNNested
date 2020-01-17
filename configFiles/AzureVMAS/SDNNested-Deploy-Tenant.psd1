@@ -3,7 +3,7 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
-    VMLocation           = "C:\VMs"
+    VMLocation           = "D:\VMs"
     
     ConfigFileName       = "AzureVMAS"
  
@@ -17,6 +17,8 @@
 
     DomainJoinUserName   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
+
+    RestURI = "https://NCNORTHBOUND.SDN.LAB"
 
     Tenants              = 
     @(
@@ -157,8 +159,5 @@
             TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
         }
     )
-    
-
-    RestURI = "https://NCFABRIC.SDN.LAB"
 
 }

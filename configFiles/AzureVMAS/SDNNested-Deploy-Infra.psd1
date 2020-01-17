@@ -1,12 +1,12 @@
 @{
     ScriptVersion        = "2.0"
 
-    VHDPath              = "F:\VMs\Template"
+    VHDPath              = "E:\VMs\Template"
     VHDFile              = "Win2019-Core.vhdx"
     
-    VHDGUIFile              = "Win2019-GUI.vhdx"
+    VHDGUIFile           = "Win2019-GUI.vhdx"
 
-    VMLocation           = "F:\VMs"
+    VMLocation           = "E:\VMs"
     DomainFQDN           = "SDN.LAB"
 
     ManagementSubnet     = "10.184.108.0/24"
@@ -17,8 +17,11 @@
     DomainJoinUsername   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
 
-    AzureVMadmin         = "VMASUser"
-    AzureVMPwd           = "J$)Lu=XuVx29bRm"
+    VMHostadmin         = "VMASUser"
+    VMHostPwd           = "J$)Lu=XuVx29bRm"
+
+    #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
+    SDNonS2D          = $False
 
     HostSdnNICs     = 
     @( 
@@ -46,7 +49,7 @@
             ComputerName = 'SDN-HOST01'; 
             VMMemory     = 24GB;
             VMProcessorCount = 4;
-            VMsDiskSize = 384GB;
+            VMDiskSize = 384GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -55,7 +58,7 @@
             ComputerName = 'SDN-HOST02'; 
             VMMemory     = 24GB;
             VMProcessorCount = 4;
-            VMsDiskSize = 384GB;
+            VMDiskSize = 384GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -156,22 +159,21 @@
     )
 
 
+    #If SDNonS2D          = $False then the S2DDiskSize and S2DDiskNumber will be ignored
     S2DDiskSize          = 128GB
     S2DDiskNumber        = 3
-    #S2DClusterIP         = "10.184.108.4"
-    #S2DClusterName       = "HYPV-S2D-01"
-    
+    S2DClusterIP         = "10.184.108.4"
+    S2DClusterName       = "SDNFABRIC"
+   
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
     # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
-    # SwitchName=''
+    SwitchName           = "SDN"
 
     # Amount of Memory and number of Processors to assign to VMs that are created.
     # If not specified a default of 8 procs and 8GB RAM are used.
     VMMemory             = 2GB
     VMProcessorCount     = 2
-
-    SwitchName           = "SDN"
 
     PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.1"; }
 

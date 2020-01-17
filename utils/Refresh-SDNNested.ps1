@@ -48,7 +48,7 @@ foreach ( $node in $Nodes) {
         if (  ! (winrm enumerate winrm/config/listener | findstr $Mythumbprint) ){
 
             $RestName = (Get-ItemProperty "hklm:\system\currentcontrolset\services\nchostagent\parameters" -Name PeerCertificateCName).PeerCertificateCName
-            Write-Host -ForegroundColor Yellow "Allowing WinRM with certificate authentication between $env:COMPUTERNAME and $RestName"
+           Write-SDNNestedLog  "Allowing WinRM with certificate authentication between $env:COMPUTERNAME and $RestName"
 
             Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
             $NCthumbprint = (Get-ChildItem Cert:\LocalMachine\root | ? { $_.Subject -match $RestName }).Thumbprint
