@@ -209,7 +209,7 @@ foreach ($Tenant in $configdata.Tenants) {
                 $nwConnectionProperties.Routes += $ipv4Route   
             }
 
-            # Add the new Network Connection for the tenant    
+            # Add the new Network Connection for the tenant
             New-NetworkControllerVirtualGatewayNetworkConnection -ConnectionUri $uri -VirtualGatewayId $virtualGW.ResourceId `
                 -ResourceId "nwConnection_$($gw.Type)" -Properties $nwConnectionProperties -Force
 
@@ -624,6 +624,7 @@ foreach ($vip in $configdata.SlbVIPs)
 
     $LoadBalancerProperties.loadbalancingRules.properties.Probe += $Probe 
 
+    Write-SDNNestedLog  "Pushing LoadBalancer $lbresourceId to $uri"
     $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
         -Properties $LoadBalancerProperties -Force -PassInnerException
 

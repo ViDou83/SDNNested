@@ -8,15 +8,20 @@ https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-
 Please examine and understand config files structure before running deployement. You can either use provided config files or simply copy one folder and rename it based on your need.
 
 VM acting as Hypv Server (can be a Azure VM) :
-* One DC acting as ToR Router (router between SDN Stack and outside) - TOR router can be deployed to a dedicated VM and mode DCs can be added (see SDNNested-Deploy-Infra.psd1 config file ) 
-* Two Hypv host (Cluster with S2D Disk pool) where SDN stack will be deployed (with SDN Express script) - Can add more just need to customized SDNNested-Deploy-Infra.psd1 config file 
+* One DC acting as ToR Router (router between SDN Stack and outside)
+    * TOR router can be deployed to a dedicated VM and mode DCs can be added (see SDNNested-Deploy-Infra.psd1 config file ) 
+* Two Hypv host (Cluster with S2D Disk pool - needed to manage SDN Stack with WAC) where SDN stack will be deployed (with SDNExpress script)
+    * Could add more, just need to customized SDNNested-Deploy-Infra.psd1 config file 
 * Two tenants "physical" Gateway (Tenants Contoso L3 and Fabrikam GRE tunnel) to simulate remote tenant network (outside the SDN Stack)
+    *  Could add more or less, just need to customized SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config file 
 
 On the SDN-HOSTs Hypv Server cluster :
 * One Network controller Cluster or a standalone (see SDNExpress-Config.psd1) 
 * Two Gateways (see SDNExpress-Config.psd1) 
 * Two MUXes (see SDNExpress-Config.psd1) 
-* Tenant VMs based on the deployement (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files ) 
+* Tenant VMs based on the deployement (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files )
+    * Tenant VM will run a IIS-Website to allow visualize from the browser where the SLB is delivering the request
+    * Tenant ContainerHost VM will run a IIS-Website container image to allow visualize from the browser where the SLB is delivering the request. SLB is delivring the packet to the primary IPaddr of the ContainerHOST VM, then inside the ContainerHost a second LB is configured.               
 
 IP subnets and VLAN (can be changed):
 - MGMT 10.184.108.0/24 - VLAN 7
