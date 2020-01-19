@@ -1,28 +1,28 @@
 # SDNNested
-SDNNested is a collection of PS Script that automates the Microsoft SDN deployment on a Azure VM Nested Environement.
+SDNNested is a collection of PSScript that automates the deployment of a Microsoft SDNv2 LAB on a Nested Environement. 
+That can be executed against either on a physical machine or a VM acting as a HYPV hypervisor. 
+https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
 
-## Infrastucture deployed with provided config files
+## Example of deployed infrastucture
 
-Azure VM can be manually deployed or you can use the script:
-* .\New-SDNNestedAzHost.ps1 -ConfigurationDataFile .\configfiles\SDNNestedAzHost.psd1
+* Please examine and understand config files structure before running deployement. You can either use provided config files or simply copy one folder and rename it based on your need.
 
-Azure VM acting as Hypv Server (1st level of Nested virtualization )
-* One DC acting as ToR Router (router between SDN Stack and outside)
-* Two Hypv host (Cluster with S2D Disk pool) where SDN stack will be deployed (with SDN Express script)
+VM acting as Hypv Server (can be a Azure VM) :
+* One DC acting as ToR Router (router between SDN Stack and outside) - TOR router can be deployed to a dedicated VM and mode DCs can be added (see SDNNested-Deploy-Infra.psd1 config file ) 
+* Two Hypv host (Cluster with S2D Disk pool) where SDN stack will be deployed (with SDN Express script) - Can add more just need to customized SDNNested-Deploy-Infra.psd1 config file 
 * Two tenants "physical" Gateway (Tenants Contoso L3 and Fabrikam GRE tunnel) to simulate remote tenant network (outside the SDN Stack)
 
-On the SDN-HOST Hypv Server (2nd level of Nested virtualization ):
-* One Network controller Cluster composed of 3 nodes
-* Two Gateways + Tenants vGW (L3 + GRE)
-* Two MUXes
-* Two Contoso Tenant VMs 
-* Two Fabrikam Tenant VMs
+On the SDN-HOSTs Hypv Server cluster :
+* One Network controller Cluster or a standalone (see SDNExpress-Config.psd1) 
+* Two Gateways (see SDNExpress-Config.psd1) 
+* Two MUXes (see SDNExpress-Config.psd1) 
+* Tenant VMs based on the deployement (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files ) 
 
-IP subnets and VLAN:
+IP subnets and VLAN (can be changed):
 - MGMT 10.184.108.0/24 - VLAN 7
 - PROVIDER 10.10.56.0/23 - VLAN 11
 - CONTOSO L3 INTERCO 10.127.134.0/25 - VLAN 1001
-- CONTOSO and FABRIKAM SUBNET : 172.16.1.0/24 
+- CONTOSO and FABRIKAM SUBNET (voluntary the same to demonstrate isolation): 172.16.1.0/24 
     *  Contoso-testVM01 - 172.16.1.10/24
     *  Contoso-testVM02 - 172.16.1.10/24
     *  Fabrikam-testVM01 - 172.16.1.10/24
@@ -31,24 +31,30 @@ IP subnets and VLAN:
     * 41.40.40.8 -> CONTOSO
     * 41.40.40.9 -> FABRIKAM
 
+### Azure VM case
 On the Azure VM itself:
-* WAC can be installed to manage S2D cluster and SDN stack (see C:\apps)
-* Wireshark can be installed with PortMirroring in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance). (see C:\apps)
+* WAC can be installed to manage S2D cluster and SDN stack
+* Wireshark can be installed with PortMirroring (automatically configured vNIC named Mirror) in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance).
+By default, WAC and Wireshark installer are located under C:\apps (get from the AzureFileShare see configFile)
 
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
 
 
 ## Usage
-*   Deploy Azure VM :
-    *   Use New-SDNNestedAzHost.ps1 script, run it from a machine with access to your Azure Subscription. Config file is AzureVM.psd1 to define :
+
+### If using Azure VM 
+*   Deploy Azure VM (skip this step if you are not using Azure):
+    *   Use New-SDNNestedAzHost.ps1 script, run it from a machine with access to your Azure Subscription. Config file is SDNNestedAzHost.psd1 to define :
         *   Subscription, ResourceGroupName, VMName, VMSize, VM username and  Password, AzFileShare where VHDX and misc apps/tools can be hosted
-        *  Ex: .\New-SDNNestedAzHost.ps1 -ConfigurationDataFile .\configfiles\SDNNestedAzHost.psd1
+        *  Ex: .\New-SDNNestedAzHost.ps1 -ConfigurationDataFile .\configfiles\Azure_E8_v3\SDNNestedAzHost.psd1
         * AzFile share folder tree has to be 
             * \\AzFileShare\Template => contains sysprered vhdx (Name has to the one used).
             * \\AzFileShare\Apps => put what you want...
             *  Template folder will be replicated on the AzVM F:\VMs Drive and App under C:\
-*   Deploy 1st level of Nested virtualization :
+
+### Deploy DCs, ToR Router, SDN HOSTs and Tenant External GWs
+Deploy 1st level of Nested virtualization :
     *   Use New-SDNNestedInfra.ps1 script, run it from the Azure VM itself. Config file is SDNNested-Deploy-Infra.psd1 and can be fully customized. PREREQUISITES : You need to have VHDX generelazied hosted on the AzureVM. 
 *   2nd level of Nested virtualization 
     *   Use SDNExpress script, please copy to one of SDN-HOST VM and run it locally from this host (not from a PS Session but through VM Console). You can use either the one located here, you can get the latest one from :
