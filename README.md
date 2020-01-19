@@ -50,7 +50,7 @@ IP subnets and VLAN (can be changed):
     * 41.40.40.8 -> CONTOSO
     * 41.40.40.9 -> FABRIKAM
 
-## USAGE
+# USAGE
 PREREQUISITES : You must have VHDX images located inside the folder where the VM will be stored 
 Ex: F:\VMs\Template\
 
@@ -69,7 +69,7 @@ see SDNNestedAzHost.psd1 config file :
     AZFileUser                  = "Azure\rgazfrancediag"
     AZFilePwd                   = "PROVIDE THE PASSWORD"
 
-### STEP 0 - If using Azure VM 
+## STEP 0 - If using Azure VM 
 *   Deploy Azure VM (skip this step if you are not using Azure):
     *   Use New-SDNNestedAzHost.ps1 script, run it from a machine with access to your Azure Subscription. 
         *   Config file is .\configfiles\{Azure_E8_v3,Azure_E16_v3,Whatever}\SDNNestedAzHost.psd1 to define :
@@ -81,7 +81,7 @@ see SDNNestedAzHost.psd1 config file :
             * \\AzFileShare\Apps => put what you want...
             *  Template folder will be replicated on the AzVM to F:\VMs, and Apps to C:\
 
-###  STEP 1 - Deploy DCs, ToR Router, SDN HOSTs and Tenant External GWs
+##  STEP 1 - Deploy DCs, ToR Router, SDN HOSTs and Tenant External GWs
 PREREQUISITES : You must have the SDNNested folder locacted on F:\VMs\Template (download it from this github repo and then uncompress it). 
 ex : F:\VMs\Template\SDNNested => Go into that folder to execute scripts. 
 INFO : This folder will be mapped (SMB Share) to the SDN HOSTs (to Drive Z:).
@@ -89,7 +89,7 @@ INFO : This folder will be mapped (SMB Share) to the SDN HOSTs (to Drive Z:).
 *   Use New-SDNNestedInfra.ps1 script, run it from the physical machine or the VM where you want to deploy SDNNested LAB. Config file is SDNNested-Deploy-Infra.psd1 and can be fully customized.
     *   PS F:\VMs\Template\SDNNested>.\New-SDNNestedInfra.ps1  -ConfigurationDataFile .\configfiles\Azure_E8_v3\SDNNested-Deploy-Infra.psd1    
 
-### STEP 2 - Deploy SDNv2 Stack using SDNExpres scprit 
+## STEP 2 - Deploy SDNv2 Stack using SDNExpres scprit 
 To get the latest SDNExpress script please check out:
 see https://github.com/microsoft/SDN/tree/master/SDNExpress (slow ring) or https://github.com/microsoft/SDN/tree/master/SDNExpress (fast ring)
 
@@ -99,7 +99,7 @@ The SDNExpress Script has to be executed from one of SDN-HOST* (not from a PS Se
 *   Use SDNExpress script, the script should be located under Z:\SDNNested\SDNExpress (mapped from local machine) :
     * PS Z:\SDNNested\SDNEXpress>.\SDNExpress.ps1  -ConfigurationDataFile ..\configfiles\Azure_E8_v3\SDNExpress-Config.psd1        
 
-### STEP 3 - Deploy Tenant environement
+## STEP 3 - Deploy Tenant environement
 REMINDER: think to start the Tenant external GW before if you want BGP peering and GRE autoconfig performed. GW VMs had been stopped during the infra deployment to save memory.
 
 *   Use Add-SDNNestedTenant.ps1 script, the script should be located on the SDN-HOST on Z:\SDNNested :
@@ -120,13 +120,13 @@ REMINDER: think to start the Tenant external GW before if you want BGP peering a
                 * http://41.40.40.8 -> CONTOSO
                 * https//41.40.40.9 -> FABRIK
 
-### Miscs
+## Miscs
 On the Azure VM itself:
 * WAC can be installed to manage S2D cluster and SDN stack
 * Wireshark can be installed with PortMirroring (automatically configured vNIC named Mirror) in place to visualize most of the traffic on the SDN Stack (Non and encapsulated one - VxLAN and GRE for instance).
 By default, WAC and Wireshark installer are located under C:\apps (get from the AzureFileShare see configFile)
 
-## Contributing
+# Contributing
 Please reach vidou@microsoft.com for any feedback or question.
 
 # GITHUB usage
@@ -140,4 +140,4 @@ Iterate on this branch until satisfied
 Create a Pull Request into the master branch from https://github.com/ViDou83/SDNNested (Select Pull requests, New pull request) and compare across forks
 At this point, the PR will be reviewed and merged into the master branch by one of the Maintainers.
 
-## License
+# License
