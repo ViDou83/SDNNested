@@ -1,5 +1,7 @@
 # Purpose 
 SDNNested is a collection of Powershell Scrits that help to automate the deployment of a Microsoft SDNv2 LAB on one single machine (Nested LAB). 
+
+https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
  
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
@@ -12,28 +14,28 @@ SDNNested is a collection of Powershell Scrits that help to automate the deploym
 *   MAchine's processor(s) must support Nested Virtualization  :
     *   see https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization
     
-https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
-
 ## Example of deployed infrastucture
-IMPORTANT: Please examine and understand files structure before running any deployement. You can either use provided config files or simply copy one folder and rename it based on your need (in that case config files structure needs to be well understood).
+IMPORTANT: To be sucessful, it is recommended to understand config files structure before start a deployement. 
+You can either use provided config files or simply copy one folder and rename it based on your need (in that case config files structure needs to be well understood).
 
 VM acting as Hypv Server (can be a Azure VM) :
 * One DC acting as ToR Router (router between SDN Stack and outside)
-    * TOR router can be deployed to a dedicated VM and mode DCs can be added (see Azure_E16_v3\SDNNested-Deploy-Infra.psd1 config file ) 
-* Two Hypv HOSTs (Cluster with S2D Disk pool is needed to manage SDN Stack with WAC) where SDN stack will be deployed (with SDNExpress script)
+    * TOR router can be deployed to a dedicated VM and more DCs can be added (see Azure_E16_v3\SDNNested-Deploy-Infra.psd1 config file ) 
+* Two Hypv HOSTs where SDN stack will be deployed (with SDNExpress script)
     * Could add more HYPV Hosts, just need to customize SDNNested-Deploy-Infra.psd1 config file
-    * Set SDNonS2D = $true into the  SDNNested-Deploy-Infra.psd1 if you want to store VMs into the ClusterStorage. By default, it is set to $false.
-* Two tenants "physical" Gateway (Contoso GW will use L3 and Fabrikam GRE tunneling) to simulate remote tenant network connectivity (outside the SDN Stack)
+    * Cluster with S2D Disk pool is needed to manage SDN Stack with WAC)
+        * Set SDNonS2D = $true into the SDNNested-Deploy-Infra.psd1 if you want to store VMs into the ClusterStorage (performance issue in a Nested env). By default, it is set to $false.
+* Two tenants "physical" Gateways (Contoso GW will use L3 and Fabrikam GRE tunneling) to simulate remote tenant network connectivity (outside the SDN Stack)
     *  Could add more or less Tenants, just need to customize SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config file 
 
 On the SDN-HOSTs :
-* One Network controller ServiceFabric Cluster (with minimum of 3 nodes ) or a standalone (see SDNExpress-Config.psd1) 
-* Two Gateways
+* A Network controller ServiceFabric Cluster (with minimum of 3 nodes ) or a standalone (see SDNExpress-Config.psd1) 
+* Two multi-tenant Gateways
 * Two MUXes
-* Tenant VMs based on the deployement config files used (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files )
-    * Tenant VM will run a IIS-Website which will permit to visualize from the LocalMAchine browser, where the SLB is delivering the request
-    * Tenant ContainerHost VM will run a IIS-Website container image which will permit to visualize from the browser, where the SLB is delivering the request.
-    *   In the Container case, SLB is delivring the packet to the primary IPaddr (DIP) of the ContainerHOST VM, then inside the ContainerHost a second LB is configured to load-balanced to running containers.               
+* Tenant VMs - based on the deployement config files used (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files )
+    * Tenant VM will run a IIS-Website, from the LocalMAchine browser reach http://VIP and the WebPage will indicate to which tenant VM (DIP) the SLB is routing the request
+    * Tenant ContainerHost VM will run a IIS-Website container image, from the LocalMAchine browser reach http://VIP and the WebPage will indicate to which tenant VM (DIP) the SLB is routing the request
+    *   In the Container case, SLB is forwarding the packet to the ContainerHost Tenant VM (DIP), then inside the ContainerHost a second LB is configured to load-balanced to running containers.               
 
 IP subnets and VLAN (can be changed):
 - MGMT 10.184.108.0/24 - VLAN 7
