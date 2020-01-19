@@ -336,9 +336,9 @@ Write-SDNNestedLog "####"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "############"
 $result = $false
-$result = invoke-command -VMName $configdata.HyperVHosts.Computername -Credential $DomainJoinCredential -ea SilentlyContinue { 
+$result = invoke-command -VMName $configdata.HyperVHosts[-1].Computername -Credential $DomainJoinCredential -ea SilentlyContinue { 
                 $S2DClusterName=$args[0]
-                if ( (get-cluster).Name -eq $S2DClusterName { $true }
+                if ( (get-cluster).Name -eq $S2DClusterName ){ $true } 
                 else{ $false }
             } -ArgumentList $ConfigData.S2DClusterName
 if ( $result -ne $ConfigData.S2DClusterName )
