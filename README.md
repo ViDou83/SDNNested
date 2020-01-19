@@ -129,6 +129,7 @@ By default, WAC and Wireshark installer are located under C:\apps (get from the 
 ## Contributing
 Please reach vidou@microsoft.com for any feedback or question.
 
+# GITHUB usage
 Some people might be new to using Git and GitHub so here is a simple workflow to facilitite Pull Requests which can be reviewed and merged easily.
 
 Create a forked copy of the SDNNested repo from https://github.com/ViDou83/SDNNested
