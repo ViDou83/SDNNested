@@ -89,7 +89,7 @@ INFO : This folder will be mapped (SMB Share) to the SDN HOSTs (to Drive Z:).
 *   Use New-SDNNestedInfra.ps1 script, run it from the physical machine or the VM where you want to deploy SDNNested LAB. Config file is SDNNested-Deploy-Infra.psd1 and can be fully customized.
     *   PS F:\VMs\Template\SDNNested>.\New-SDNNestedInfra.ps1  -ConfigurationDataFile .\configfiles\Azure_E8_v3\SDNNested-Deploy-Infra.psd1    
 
-## STEP 2 - Deploy SDNv2 Stack using SDNExpres scprit 
+## STEP 2 - Deploy SDNv2 Stack using SDNExpress scprit 
 To get the latest SDNExpress script please check out:
 see https://github.com/microsoft/SDN/tree/master/SDNExpress (slow ring) or https://github.com/microsoft/SDN/tree/master/SDNExpress (fast ring)
 
