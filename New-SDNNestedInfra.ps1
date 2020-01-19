@@ -183,8 +183,6 @@ foreach ( $dc in $configdata.DCs)
     }
     else{   Write-SDNNestedLog  "VM=$($vm.Name) already exist - Skipping deployment" }
     #Adding credential to the cache
-    Invoke-Expression -Command `
-            "cmdkey /add:$($dc.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
 
     WaitLocalVMisBooted $dc.computername $DomainJoinCredential
 }
@@ -298,8 +296,6 @@ foreach ( $node in $configdata.HyperVHosts)
         Write-SDNNestedLog "Configuring VMNIC on $($node.computername) as dot1q trunk to carry VLANs traffic"
         Get-VMNetworkAdapter -VMName $node.ComputerName | Set-VMNetworkAdapterVlan -Trunk -AllowedVlanIdList 1-1024 -NativeVlanId 0
         #Adding credential to the cache
-        Invoke-Expression -Command `
-            "cmdkey /add:$($node.ComputerName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
     }
     else{ Write-SDNNestedLog  "VM=$($vm.Name) already exist - Skipping deployment" }
 }
@@ -352,8 +348,6 @@ if ( $result -ne $ConfigData.S2DClusterName )
         Write-SDNNestedLog  "### Configuring dummy S2D Cluster to manage SDN through WAC"
         New-SDNS2DCluster $ConfigData.HyperVHosts.ComputerName $DomainJoinCredential $ConfigData.S2DClusterIP $ConfigData.S2DClusterName $true
     }
-    Invoke-Expression -Command `
-    "cmdkey /add:$($ConfigData.S2DClusterName).$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
 }
 else{ Write-SDNNestedLog "$($ConfigData.S2DClusterName) already exist - Skipping S2D deployment" }
 
@@ -578,6 +572,9 @@ if( $ConfigData.S2DClusterName )
     Add-Content C:\windows\System32\drivers\etc\hosts -Value "$($ConfigData.S2DClusterIP) $($ConfigData.S2DClusterName)"
 }
 #>
+Invoke-Expression -Command `
+"cmdkey /add:*.$($configdata.DomainFQDN) /user:$($configdata.DomainJoinUsername) /pass:$DomainJoinPassword" | Out-Null
+
 Write-SDNNestedLog  "Creating SMBSHare on $env:computername to expose VHDX template to SDN-HOST"
 New-SmbShare -Name Template -Path $configdata.VHDPath -FullAccess Everyone -ErrorAction SilentlyContinue | out-Null
 
