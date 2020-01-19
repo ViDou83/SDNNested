@@ -306,6 +306,28 @@ foreach ( $node in $configdata.HyperVHosts)
 
 WaitLocalVMisBooted $configdata.HyperVHosts[-1].Computername $DomainJoinCredential
 
+#Check that All Features are well installed.
+foreach ( $node in $configdata.HyperVHosts) 
+{
+    $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
+
+    foreach( $Feature in $FeatureList)
+    {
+        Write-SDNNestedLog "Checking that all needed features are installed on $($node.ComputerName)"
+        
+        $result = $true
+        $result= invoke-command -VMName $node.ComputerName -Credential $DomainJoinCredential -ea SilentlyContinue { 
+            $Feature=$args[0]
+            (Get-WindowsFeature $Feature).installed 
+        } -ArgumentList $Feature
+
+        if ( ! $result )
+        {
+            Add-WindowsFeatureOnVM $node.computername $DomainJoinCredential $Feature 
+        }
+    }
+}
+
 Write-SDNNestedLog "############"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "####"
@@ -313,9 +335,12 @@ Write-SDNNestedLog "### CONFIGURING S2D CLUSTER "
 Write-SDNNestedLog "####"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "############"
-$result = invoke-command -VMName $configdata.HyperVHosts[-1].Computername -Credential $DomainJoinCredential -ea SilentlyContinue { 
-                (get-cluster).Name 
-            }
+$result = $false
+$result = invoke-command -VMName $configdata.HyperVHosts.Computername -Credential $DomainJoinCredential -ea SilentlyContinue { 
+                $S2DClusterName=$args[0]
+                if ( (get-cluster).Name -eq $S2DClusterName { $true }
+                else{ $false }
+            } -ArgumentList $ConfigData.S2DClusterName
 if ( $result -ne $ConfigData.S2DClusterName )
 {
     if( $ConfigData.SDNonS2D )

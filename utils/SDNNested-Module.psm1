@@ -89,6 +89,7 @@ function WaitLocalVMisBooted()
         $ps = new-pssession -VMName $VMName -Credential $Credential -ErrorAction SilentlyContinue
         if( $ps )
         {
+            Start-Sleep 1
             $result = Invoke-Command -Session $ps -ScriptBlock  {
                 if (Test-Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") 
                 {
@@ -531,7 +532,7 @@ function Connect-HostToSDN()
         
         $vNIC =  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch
         Write-SDNNestedLog "Enabling Ethernet Jumbo Frames"
-        $vNIC | Get-NetAdapter | Get-NetAdapterAdvancedProperty | ? RegistryKeyword -EQ "*JumboPacket" | Set-NetAdapterAdvancedProperty -RegistryValue 9014
+        Get-NetAdapter -Name "*$($vNIC.Name)*" | Get-NetAdapterAdvancedProperty | ? RegistryKeyword -EQ "*JumboPacket" | Set-NetAdapterAdvancedProperty -RegistryValue 9014
         if( $vNIC ) 
         { 
             Add-vNicIpConfig $vNIC $NIC
