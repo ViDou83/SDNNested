@@ -1,7 +1,6 @@
 # Purpose 
-SDNNested is a collection of Powershell Scrits that help to automate the deployment of a Microsoft SDNv2 LAB on a Nested Environement. 
-That can be executed either from a physical machine or a VM. 
-
+SDNNested is a collection of Powershell Scrits that help to automate the deployment of a Microsoft SDNv2 LAB on one single machine (Nested LAB). 
+ 
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
 
