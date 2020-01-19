@@ -113,7 +113,7 @@ function WaitLocalVMisBooted()
             Start-Sleep 30
         }
 
-        Start-Sleep 1   
+        Start-Sleep 5   
         Write-Host "." -NoNewline
     }
     Write-Host "[OK]"
