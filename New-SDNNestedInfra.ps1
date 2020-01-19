@@ -306,7 +306,7 @@ foreach ( $node in $configdata.HyperVHosts)
 
 WaitLocalVMisBooted $configdata.HyperVHosts[-1].Computername $DomainJoinCredential
 
-#Check that All Features are well installed.
+#Check that all Features are well installed.
 foreach ( $node in $configdata.HyperVHosts) 
 {
     $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
