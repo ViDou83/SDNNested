@@ -311,10 +311,9 @@ foreach ( $node in $configdata.HyperVHosts)
 {
     $FeatureList = "Hyper-V", "Failover-Clustering", "Data-Center-Bridging", "RSAT-Clustering-PowerShell", "Hyper-V-PowerShell", "FS-FileServer"
 
+    Write-SDNNestedLog "Checking that all needed features are installed on $($node.ComputerName)"
     foreach( $Feature in $FeatureList)
-    {
-        Write-SDNNestedLog "Checking that all needed features are installed on $($node.ComputerName)"
-        
+    {        
         $result = $true
         $result= invoke-command -VMName $node.ComputerName -Credential $DomainJoinCredential -ea SilentlyContinue { 
             $Feature=$args[0]
