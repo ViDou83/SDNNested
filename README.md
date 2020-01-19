@@ -1,11 +1,11 @@
-# SDNNested
+# Deploy Microsoft SDNv2 2019 on one single machine 
 SDNNested is a collection of PSScript that automates the deployment of a Microsoft SDNv2 LAB on a Nested Environement. 
-That can be executed against either on a physical machine or a VM acting as a HYPV hypervisor. 
+That can be executed either on a physical machine or a VM. HYPV role is required (Nested Virtualization will be use). 
 https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
 
 ## Example of deployed infrastucture
 
-* Please examine and understand config files structure before running deployement. You can either use provided config files or simply copy one folder and rename it based on your need.
+Please examine and understand config files structure before running deployement. You can either use provided config files or simply copy one folder and rename it based on your need.
 
 VM acting as Hypv Server (can be a Azure VM) :
 * One DC acting as ToR Router (router between SDN Stack and outside) - TOR router can be deployed to a dedicated VM and mode DCs can be added (see SDNNested-Deploy-Infra.psd1 config file ) 
