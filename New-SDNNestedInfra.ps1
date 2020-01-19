@@ -323,6 +323,7 @@ foreach ( $node in $configdata.HyperVHosts)
 
         if ( ! $result )
         {
+            Write-SDNNestedLog "Feature $Feature is not installed on $($node.ComputerName)"
             Add-WindowsFeatureOnVM $node.computername $DomainJoinCredential $Feature 
         }
     }
