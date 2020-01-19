@@ -1,4 +1,3 @@
-
 function Write-SDNNestedLog 
 {
     Param([String] $Message)
@@ -7,9 +6,52 @@ function Write-SDNNestedLog
     $FormattedMessage = "[$FormattedDate] $Message"
     write-Host -ForegroundColor yellow $FormattedMessage
 
-    $formattedMessage | out-file ".\SDNExpressLog.txt" -Append
+    $formattedMessage | out-file ".\SDNNestedLog.txt" -Append
 }
 
+
+function Get-IPLastAddressInSubnet {
+    param([string] $subnet)
+    write-SDNNestedLog "$($MyInvocation.InvocationName)"
+    write-SDNNestedLog "   -Subnet: $subnet"
+
+    $prefix = ($subnet.split("/"))[0]
+    $bits = ($subnet.split("/"))[1]
+
+    $ip = [IPAddress] $prefix
+    if ($ip.AddressFamily -eq "InterNetworkV6") {
+        $totalbits = 128
+    }
+    else {
+        $totalbits = 32
+    }
+
+    $bytes = $ip.getaddressbytes()
+    $rightbits = $totalbits - $bits
+    
+    write-SDNNestedLog "rightbits: $rightbits"
+    $i = $bytes.count - 1
+    while ($rightbits -gt 0) {
+        if ($rightbits -gt 7) {
+            write-SDNNestedLog "full byte"
+            $bytes[$i] = $bytes[$i] -bor 0xFF
+            $rightbits -= 8
+        }
+        else {
+            write-SDNNestedLog "Final byte: $($bytes[$i])"
+            $bytes[$i] = $bytes[$i] -bor (0xff -shr (8 - $rightbits))
+            write-SDNNestedLog "Byte: $($bytes[$i])"
+            $rightbits = 0
+        }
+        $i--
+    }
+
+    $ip2 = [IPAddress] $bytes 
+
+    $return = $ip2.IPAddressToString
+    write-SDNNestedLog "$($MyInvocation.InvocationName) Returns $return"
+    $return
+}
 
 function GetCred {
     param(
@@ -18,48 +60,68 @@ function GetCred {
         [String] $Message,
         [String] $UserName
     )
-       Write-SDNNestedLog "Using credentials from the command line."    
-        return  get-Credential -Message $Message -UserName $UserName
+    
+    Write-SDNNestedLog "Using credentials from the command line."    
+    return  get-Credential -Message $Message -UserName $UserName
 }
+
 
 function WaitLocalVMisBooted()
 {
     param(
         [String] $VMName,
-        [PSCredential] $Credential,
-        [Boolean] $Wait,
-        [Int] $Seconds
+        [PSCredential] $Credential
     )
 
-   Write-Host "$VMName is booting"
-    
-    if ( $Wait ){
-        for($i=0;$i -lt $Seconds;$i++){Write-Host "." -NoNewline; Sleep 1; }
-    }
+    Write-SDNNestedLog "Waiting till $VMName is READY"
 
+    Write-Host "Waiting till $VMName is READY" -NoNewline
+    
     $loop = $true
     while ( $loop )
     {
-        $result = Invoke-Command -VMName $VMName -Credential $Credential -ErrorAction SilentlyContinue  -ScriptBlock {
-            if (Test-Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") 
-            {
-                "RebootPending"
-            } 
-            else
-            {
-                $env:COMPUTERNAME 
-            }
-        }
-        
-        if ( $result -eq $VMName ){ $loop = $false }
-        if ( $result -eq "RebootPending" ){ $loop = $true }
+        $ps = $null
+        $result = ""
 
-        Start-Sleep -Seconds 10; 
-       Write-Host "." -NoNewline 
+        klist purge | out-null  #clear kerberos ticket cache 
+        Clear-DnsClientCache    #clear DNS cache in case IP address is stale
+
+        $ps = new-pssession -VMName $VMName -Credential $Credential -ErrorAction SilentlyContinue
+        if( $ps )
+        {
+            $result = Invoke-Command -Session $ps -ScriptBlock  {
+                if (Test-Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") 
+                {
+                    "RebootPending"
+                } 
+                else
+                {
+                    $env:COMPUTERNAME 
+                }
+            }
+            remove-pssession $ps
+        }
+
+        if ( $result -eq $VMName )
+        { 
+            $loop = $false 
+            break
+        }
+        if ( $result -eq "RebootPending" )
+        { 
+            Start-Sleep 30
+        }
+
+        Start-Sleep 1   
+        Write-Host "." -NoNewline
     }
-   Write-Host "[OK]"
+    Write-Host "[OK]"
+
+    Write-SDNNestedLog "$VMName is READY"
+    Start-Sleep 10
 }
-function Add-UnattendFileToVHD {
+function Add-UnattendFileToVHD 
+{
     
     Param(
         [String] $VHD, 
@@ -75,7 +137,7 @@ function Add-UnattendFileToVHD {
         [Object] $NICs
     )
 
-   Write-SDNNestedLog "Generating and injecting unattend.xml to $VHD"
+    Write-SDNNestedLog "Generating and injecting unattend.xml to $VHD"
 
     $TempFile = New-TemporaryFile
     Remove-Item $TempFile.FullName -Force
@@ -83,10 +145,10 @@ function Add-UnattendFileToVHD {
 
     New-Item -ItemType Directory -Force -Path $MountPath | out-null
 
-   Write-SDNNestedLog "Mounting $VHD file"
+    Write-SDNNestedLog "Mounting $VHD file"
     Mount-WindowsImage -ImagePath $VHD -Index 1 -path $MountPath | out-null
 
-    $TimeZone = "Central European Time"
+    $TimeZone = (Get-TimeZone).id
     $count = 1
     $TCPIPInterfaces = ""
     $dnsinterfaces = ""
@@ -268,7 +330,6 @@ function Add-UnattendFileToVHD {
     DisMount-WindowsImage -Save -path $MountPath | out-null
     Remove-Item $MountPath -Recurse -Force
 }
-    
 function New-SdnNestedVm() {
     param(
         [String] $VMLocation,
@@ -295,14 +356,14 @@ function New-SdnNestedVm() {
     $CurrentVMLocationPath = "$VMLocation\$VMName"
     $VHDTemplateFile = "$VHDSrcPath\$VHDName"
 
-   Write-SDNNestedLog "Creating VM $VMName on $env:computername" 
+    Write-SDNNestedLog "Creating VM $VMName on $env:computername" 
 
     if ( !(Test-Path $CurrentVMLocationPath) ) {  
        Write-SDNNestedLog "Creating folder $CurrentVMLocationPath"
         New-Item -ItemType Directory $CurrentVMLocationPath | Out-null
     }
 
-   Write-SDNNestedLog "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
+    Write-SDNNestedLog "Copying VHD template $VHDTemplateFile to $CurrentVMLocationPath"
     
     #Optimization to copy locally the syspreped VHDX once and then use it
     <#
@@ -371,7 +432,7 @@ function New-ToRRouter()
         if ( get-service DNS -ErrorAction SilentlyContinue | Out-Null )
         {
             #Removing DNS registration on 2nd adapter
-           Write-SDNNestedLog  "Configuring DNS server to only listening on mgmt NIC"   
+            Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
             Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
             #Get-NetAdapter "Ethernet 2" | Set-DnsClientServerAddress -ServerAddresses "" 
             ipconfig /registerdns
@@ -387,8 +448,8 @@ function New-ToRRouter()
         
         Install-RemoteAccess -VpnType RoutingOnly
 
-       Write-SDNNestedLog  "Configuring $env:COMPUTERNAME as TOR router" 
-       Write-SDNNestedLog  "Configuring BGP router and BGP peers on $env:COMPUTERNAME"   
+        Write-Host  "Configuring $env:COMPUTERNAME as TOR router" 
+        Write-Host  "Configuring BGP router and BGP peers on $env:COMPUTERNAME"   
 
         Add-BgpRouter -BgpIdentifier $TORrouter.BgpRouter.RouterIPAddress -LocalASN $TORrouter.BgpRouter.RouterASN
         
@@ -399,17 +460,17 @@ function New-ToRRouter()
         }
 
         foreach ( $route in $TORrouter.StaticRoutes ) {
-           Write-SDNNestedLog  "Adding Static routes $($route.Route) via $($route.NextHop)"
+            Write-Host  "Adding Static routes $($route.Route) via $($route.NextHop)"
             $NextHopSplit = $($route.NextHop).split(".")
      
             $ifIndex = (Get-NetIPAddress | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
 
             if ( $ifIndex ){
-               Write-SDNNestedLog  "Adding Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+                Write-Host  "Adding Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
                 New-NetRoute -DestinationPrefix $route.Route -NextHop $route.NextHop -ifIndex $ifIndex
             }
             else { 
-               Write-SDNNestedLog  "ERROR: Failded to add Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
+               Write-Host  "ERROR: Failded to add Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
             }
         }
         add-content C:\ToR.txt ""
@@ -431,11 +492,12 @@ function Add-vNicIpConfig(){
 
     if( $NetAdapter )
     {
-        if ( ! ($NetAdapter | Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -eq $IpAddr ) )
+        $result =  $NetAdapter | Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ? IPAddress -eq $IpAddr 
+        if ( ! ( $result  ) )
         {
-           Write-SDNNestedLog "Configure Ip address/mask=$IpAddr/$PrefixLength Adapter=$($NetAdapter.Name) Host=$env:COMPUTERNAME"
+            Write-Host "Configure Ip address/mask=$IpAddr/$PrefixLength Adapter=$($NetAdapter.Name) Host=$env:COMPUTERNAME"
             $NetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $IpAddr -PrefixLength $PrefixLength | Out-Null
-           Write-SDNNestedLog "Configure DNS $($NetConfig.DNS) NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
+            Write-Host "Configure DNS $($NetConfig.DNS) NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
             $NetAdapter | Set-DnsClientServerAddress -ServerAddresses $NetConfig.DNS
         }
         else
@@ -445,11 +507,10 @@ function Add-vNicIpConfig(){
     }
     else {Write-SDNNestedLog  "ERROR: Failed to configure IpConfig and DNS vNIC=$($vNIC.Name) Host=$env:COMPUTERNAME" }
 
-   Write-SDNNestedLog  "Configuring VLAN vNic=$($vNIC.Name) VLANID=$($NetConfig.VLANID) Host=$env:COMPUTERNAME"
+    Write-SDNNestedLog  "Configuring VLAN vNic=$($vNIC.Name) VLANID=$($NetConfig.VLANID) Host=$env:COMPUTERNAME"
     $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NetConfig.VLANID
 
 }
-
 function Connect-HostToSDN()
 {
     param(
@@ -469,13 +530,16 @@ function Connect-HostToSDN()
         while ( !( Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch -ErrorAction Ignore)){ sleep 1}
         
         $vNIC =  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch
+        Write-SDNNestedLog "Enabling Ethernet Jumbo Frames"
+        $vNIC | Get-NetAdapter | Get-NetAdapterAdvancedProperty | ? RegistryKeyword -EQ "*JumboPacket" | Set-NetAdapterAdvancedProperty -RegistryValue 9014
         if( $vNIC ) 
         { 
             Add-vNicIpConfig $vNIC $NIC
         }
+        
     }
 
-    if ( ! (Get-NetRoute -DestinationPrefix  $NetRoute.Destination ) )
+    if ( ! (Get-NetRoute -DestinationPrefix  $NetRoute.Destination -ErrorAction SilentlyContinue ) )
     {
         $NextHopSplit = $($NetRoute.NextHop).split(".")
         $ifIndex = (Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
@@ -487,34 +551,36 @@ function Connect-HostToSDN()
         else  {Write-SDNNestedLog  "ERROR: NetRoute=$($NetRoute.Destination) on $env:computername to reach SDN VIP has not been added" }
     }
     else{ Write-SDNNestedLog "NetRoute SDN VIP pool=$($NetRoute.Destination) already present on $env:computername" }
+
+   
 }
 
-function Add-WindowsFeatureOnVM() {
+function Add-WindowsFeatureOnVM() 
+{
     param(
         [String] $VMName,
         [PSCredential] $credential,
         [String[]] $FeatureList
     )
 
-    $SecondsToWait=0
+    foreach( $Feature in $FeatureList)
+    {
+        Write-Host "Installing Windows Feature $feature on $VMName"
+        Invoke-Command -VMName $VMName -Credential $credential -ErrorAction SilentlyContinue {
+            $Feature=$args[0]
+            if ( $Feature -eq "RemoteAccess")
+            { 
+                $res = Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTool
+            }
+            else 
+            { 
+                $res = Install-WindowsFeature -Name $Feature -IncludeManagementTools
+            }       
 
-    foreach ($feature in $FeatureList) {
-        Write-Host "Installing Windows Feature $feature on $COMPUTERNAME"
-        Invoke-Command -VMName $VMName -Credential $credential {
-            $feature=$args[0]
-            if ( $feature -eq "RemoteAccess"){ Add-WindowsFeature RemoteAccess -IncludeAllSubFeature -IncludeManagementTools | Out-Null }
-            else { Install-WindowsFeature -Name $feature -IncludeManagementTools | Out-Null }
-            
-        } -ArgumentList $feature
-        $SecondsToWait+=5
+            if ( $res.RestartNeeded -eq "Yes" ){ Write-Host "Restarting $env:COMPUTERNAME"; restart-computer -Force }
+        } -ArgumentList $Feature     
+        WaitLocalVMisBooted $VMName $credential
     }
-
-    Write-SDNNestedLog  "Rebooting $VMName"     
-    Invoke-Command -VMName $VMName -Credential $credential { 
-        Restart-Computer -Force 
-    }
-    
-    WaitLocalVMisBooted $VMName $credential $true $SecondsToWait
 }
 
 <#
@@ -538,9 +604,9 @@ function New-SDNNestedADDSForest()
         SafeModeAdministratorPassword = $SafeModePwd
 
     }
-    
+
+    Write-SDNNestedLog  "--> Installing AD-DS on vm $VMName"
     Invoke-Command -VMName $VMName -Credential $Credential -ScriptBlock {
-       Write-SDNNestedLog  "Installing AD-DS on vm $env:COMPUTERNAME"
         Install-WindowsFeature -name AD-Domain-Services -IncludeManagementTools | Out-Null
         
         $params = @{
@@ -548,10 +614,10 @@ function New-SDNNestedADDSForest()
             DomainMode                    = $args.DomainMode
             SafeModeAdministratorPassword = $args.SafeModeAdministratorPassword
         }
-       Write-SDNNestedLog  "Installing ADDSForest on vm $env:COMPUTERNAME"
         Install-ADDSForest @params -InstallDns -Confirm -Force | Out-Null
         #
     } -ArgumentList $paramsDeployForest
+    Write-SDNNestedLog  "<-- Installing AD-DS on vm $VMName"
 }
 
 function Add-SDNNestedADDSDomainController()
@@ -567,15 +633,17 @@ function Add-SDNNestedADDSDomainController()
         Credential                    = $Credential
     }
 
+    Write-SDNNestedLog  " --> Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
     Invoke-Command -VMName $VMName -Credential $Credential -ScriptBlock {
         $params = @{
             DomainName                    = $args.DomainName
             Credential                    = $args.Credential
         }
 
-       Write-SDNNestedLog  "Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
         Install-ADDSDomainController @params -InstallDns -Confirm -Force | Out-Null
     } -ArgumentList $paramsAddDc
+    Write-SDNNestedLog  "<-- Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
+
 }
 
 function Add-VMDataDisk() {
@@ -591,8 +659,11 @@ function Add-VMDataDisk() {
 
     for ($i = 0; $i -lt $DiskNumber; $i++) 
     {
-        New-VHD -Path "$LocalVMPath\$VMNAme-$DiskNameStr-$i.vhdx" -SizeBytes $DiskSize -Dynamic | Out-Null
-        Add-VMHardDiskDrive -Path "$LocalVMPath\$VMNAme-$DiskNameStr-$i.vhdx" -VMName $VMName -ControllerType SCSI | Out-Null
+        $VHDFullPath = "$LocalVMPath\$VMNAme-$DiskNameStr-$i.vhdx"
+        Write-SDNNestedLog  "Creating VHDX FILE $VHDFullPath" 
+        New-VHD -Path $VHDFullPath -SizeBytes $DiskSize -Dynamic | Out-Null
+        Write-SDNNestedLog  "Attaching VM DataDisks $VHDFullPath to $VMName"
+        Add-VMHardDiskDrive -Path $VHDFullPath -VMName $VMName -ControllerType SCSI | Out-Null
     }   
 }
 
@@ -601,65 +672,78 @@ function New-SDNS2DCluster {
         [String[]] $Nodes,
         [PSCredential] $credential,
         [String] $IpAddress,
-        [String] $ClusterName
+        [String] $ClusterName,
+        [boolean] $dummy = $false
     )
 
-   Write-SDNNestedLog "S2DCONFIG: Cleaning Drives"
-    Invoke-Command -VMName ($Nodes) -Credential $credential {
-        Update-StorageProviderCache
-        Get-StoragePool | Where-Object IsPrimordial -eq $false | Set-StoragePool -IsReadOnly:$false -ErrorAction SilentlyContinue
-        Get-StoragePool | Where-Object IsPrimordial -eq $false | Get-VirtualDisk | Remove-VirtualDisk -Confirm:$false -ErrorAction SilentlyContinue
-        Get-StoragePool | Where-Object IsPrimordial -eq $false | Remove-StoragePool -Confirm:$false -ErrorAction SilentlyContinue
-        Get-PhysicalDisk | Reset-PhysicalDisk -ErrorAction SilentlyContinue
-        Get-Disk | Where-Object Number -ne $null | Where-Object IsBoot -ne $true | Where-Object IsSystem -ne $true | Where-Object PartitionStyle -ne RAW | ForEach-Object {
-            $_ | Set-Disk -isoffline:$false
-            $_ | Set-Disk -isreadonly:$false
-            $_ | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
-            $_ | Set-Disk -isreadonly:$true
-            $_ | Set-Disk -isoffline:$true
-        }
-        Get-Disk | Where-Object Number -Ne $Null | Where-Object IsBoot -Ne $True | Where-Object IsSystem -Ne $True | Where-Object PartitionStyle -Eq RAW | Group-Object -NoElement -Property FriendlyName
-    } | Sort-Object -Property PsComputerName, Count
-
-    Invoke-Command -VMName $Nodes[0] -ArgumentList $Nodes, $IpAddress, $ClusterName -Credential $credential -ScriptBlock {
+    if ( ! $dummy )
+    {
+        Write-SDNNestedLog "--> S2DCONFIG: Cleaning Drives"
+        Invoke-Command -VMName ($Nodes) -Credential $credential {
+            Update-StorageProviderCache
+            Get-StoragePool | Where-Object IsPrimordial -eq $false | Set-StoragePool -IsReadOnly:$false -ErrorAction SilentlyContinue
+            Get-StoragePool | Where-Object IsPrimordial -eq $false | Get-VirtualDisk | Remove-VirtualDisk -Confirm:$false -ErrorAction SilentlyContinue
+            Get-StoragePool | Where-Object IsPrimordial -eq $false | Remove-StoragePool -Confirm:$false -ErrorAction SilentlyContinue
+            Get-PhysicalDisk | Reset-PhysicalDisk -ErrorAction SilentlyContinue
+            Get-Disk | Where-Object Number -ne $null | Where-Object IsBoot -ne $true | Where-Object IsSystem -ne $true | Where-Object PartitionStyle -ne RAW | ForEach-Object {
+                $_ | Set-Disk -isoffline:$false
+                $_ | Set-Disk -isreadonly:$false
+                $_ | Clear-Disk -RemoveData -RemoveOEM -Confirm:$false
+                $_ | Set-Disk -isreadonly:$true
+                $_ | Set-Disk -isoffline:$true
+            }
+            Get-Disk | Where-Object Number -Ne $Null | Where-Object IsBoot -Ne $True | Where-Object IsSystem -Ne $True | Where-Object PartitionStyle -Eq RAW | Group-Object -NoElement -Property FriendlyName
+        } | Sort-Object -Property PsComputerName, Count
+        Write-SDNNestedLog "<-- S2DCONFIG: Cleaning Drives done"
+    }
+        
+    Write-SDNNestedLog "--> S2DCONFIG: Forming cluster $ClusterName / $IpAddress "
+    Invoke-Command -VMName $Nodes[0] -Credential $credential -ScriptBlock {
          
         $ClusterNodes = $args[0]
         $ClusterIP = $args[1]
         $ClusterName = $args[2]
+        $dummy  = $args[3]
 
         # Create S2D Cluster
-        Write-Verbose "Creating Cluster: SDNCLUSTER"
         Import-Module FailoverClusters 
 
         #Test-Cluster –Node $ClusterNodes[0], $ClusterNodes[1] –Include "Storage Spaces Direct", "Inventory", "Network", "System Configuration"
 
         # Create Cluster
+        Write-Host "Forming cluster $ClusterName / $ClusterIP "
         New-Cluster -Name $ClusterName -Node $ClusterNodes -StaticAddress $ClusterIP -NoStorage | Out-Null
 
-        # Invoke Command to enable S2D on SDNCluster        
+        # Invoke Command to enable S2D on SDNCluster   
+        Write-Host "Enabling S2D on cluster $ClusterName / $ClusterIP "     
         Enable-ClusterS2D -CacheState Disabled -AutoConfig:0 -SkipEligibilityChecks -Confirm:$false | Out-Null
+        if ( ! $dummy )
+        {
+            $params = @{
+                    StorageSubSystemFriendlyName = "*Clustered*"
+                    FriendlyName                 = 'SDN_S2D_Storage'
+                    ProvisioningTypeDefault      = 'Fixed'
+                }
 
-        $params = @{
-                StorageSubSystemFriendlyName = "*Clustered*"
-                FriendlyName                 = 'SDN_S2D_Storage'
-                ProvisioningTypeDefault      = 'Fixed'
+            Write-Host "Creating S2D Storage pool on cluster $ClusterName / $ClusterIP "     
+            New-StoragePool @params -PhysicalDisks (Get-PhysicalDisk | ? CanPool | ? PartitionStyle -ne GPT) | Out-Null
+
+            Get-PhysicalDisk | Where-Object  MediaType -eq "UnSpecified" | Set-PhysicalDisk -MediaType HDD | Out-Null
+
+            $params = @{  
+                FriendlyName            = 'S2D_CSV1' 
+                FileSystem              = 'CSVFS_ReFS'
+                StoragePoolFriendlyName = 'SDN_S2D_Storage'
+                PhysicalDiskRedundancy  = 1    
             }
 
-        New-StoragePool @params -PhysicalDisks (Get-PhysicalDisk | Where-Object { $_.CanPool -eq $true }) | Out-Null
+            Write-Host "Creating new S2D cluster volume on cluster $ClusterName / $ClusterIP "     
+            New-Volume @params -UseMaximumSize | Out-Null
 
-        Get-PhysicalDisk | Where-Object  MediaType -eq "UnSpecified" | Set-PhysicalDisk -MediaType HDD | Out-Null
-
-        $params = @{  
-            FriendlyName            = 'S2D_CSV1' 
-            FileSystem              = 'CSVFS_ReFS'
-            StoragePoolFriendlyName = 'SDN_S2D_Storage'
-            PhysicalDiskRedundancy  = 1    
+            # Set Virtual Environment Optimizations
+            Get-storagesubsystem clus* | set-storagehealthsetting -name “System.Storage.PhysicalDisk.AutoReplace.Enabled” -value “False”
+            Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\spaceport\Parameters -Name HwTimeout -Value 0x00007530
         }
-
-        New-Volume @params -UseMaximumSize | Out-Null
-
-        # Set Virtual Environment Optimizations
-        Get-storagesubsystem clus* | set-storagehealthsetting -name “System.Storage.PhysicalDisk.AutoReplace.Enabled” -value “False”
-        Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\spaceport\Parameters -Name HwTimeout -Value 0x00007530
-    } | Out-Null
+    } -ArgumentList $Nodes, $IpAddress, $ClusterName, $dummy
+    Write-SDNNestedLog "<-- S2DCONFIG: Forming cluster $ClusterName / $IpAddress is done"
 }

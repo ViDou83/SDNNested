@@ -21,12 +21,15 @@
 
 #>
 
-Write-SDNExpressLog  "Stopping all running VMs"
+import-module .\SDNNested-Module.psm1 -ErrorAction SilentlyContinue
+if ( !( Get-Module | ? Name -Match "SDNNested-Module" ) ){ import-module .\utils\SDNNested-Module.psm1 -ErrorAction SilentlyContinue }
+
+Write-SDNNestedLog  "Stopping all running VMs"
 get-vm | stop-vm -Force
-Write-SDNExpressLog  "Removing all running VMs"
+Write-SDNNestedLog  "Removing all running VMs"
 get-vm | remove-vm -Force
 
-Write-SDNExpressLog  "Removing all vmswitches"
+Write-SDNNestedLog  "Removing all vmswitches"
 Get-VMSwitch | Remove-VMSwitch -Force
 
 Restart-Service vmms -Force
@@ -34,12 +37,12 @@ Restart-Service vmms -Force
 $partitions=Get-Partition | ? DriveLetter
 foreach($part in $partitions){
     if($part.size -gt 1TB){
-       Write-SDNNestedLog  "Cleaning drive $($part.DriveLetter) where VMs VHDX are stored"
+       Write-SDNNestedLogLog  "Cleaning drive $($part.DriveLetter) where VMs VHDX are stored"
         Remove-Item "$($part.DriveLetter):\*" -Force -Recurse
         New-Item -Type Directory "$($part.DriveLetter):\VMs"
         New-Item -Type Directory "$($part.DriveLetter):\VMs\Template" 
     }
 }
 
-Write-SDNExpressLog  "Removing DataDepu and restart"
+Write-SDNNestedLog  "Removing DataDepu and restart"
 Get-WindowsFeature | ? Name -eq FS-Data-Deduplication | Uninstall-WindowsFeature -Restart

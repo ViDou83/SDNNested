@@ -104,7 +104,7 @@ $VirtualMachine = Set-AzVMOSDisk -StorageAccountType $storageType -VM $VirtualMa
 Write-SDNNestedLog  "Creating the AZ VM $VMName"
 
 New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName `
-    -VM $VirtualMachine -Verbose    
+    -VM $VirtualMachine -LicenseType "Windows_Server" -Verbose    
 
 Write-SDNNestedLog  "AZ VM $VMName successfully created"
 
@@ -154,6 +154,7 @@ winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
 while ((Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential { $env:COMPUTERNAME } `
             -ea SilentlyContinue) -ne $VMName) { Start-Sleep -Seconds 1 }  
 
+Write-SDNNestedLog  "Stating AZ VM $VMName / $($PIP.DnsSettings.Fqdn)"
 Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
     #https://docs.microsoft.com/fr-fr/windows-server/storage/storage-spaces/deploy-standalone-storage-spaces
 
@@ -196,7 +197,7 @@ Invoke-Command $PIP.DnsSettings.Fqdn -Credential $Credential {
         cp Z:\Template\*.vhdx "$($DriveLetter):\VMs\Template" 
     }
     else{
-       Write-SDNNestedLog  "Cannot get VHDX Template from $AZFileShare. You need to place it manually to $($DriveLetter):\VMs\Template"
+       Write-Host  "Cannot get VHDX Template from $AZFileShare. You need to place it manually to $($DriveLetter):\VMs\Template"
     }
 
     if ( Test-Path "Z:\apps") {

@@ -3,8 +3,10 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
-    VMLocation           = "C:\ClusterStorage\S2D_CSV1\VMs"
-    
+    VMLocation           = "D:\VMs"
+
+    ConfigFileName       = "Azure_E8_v3"
+
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
     VMMemory             = 2GB
@@ -15,6 +17,8 @@
 
     DomainJoinUserName   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
+
+    RestURI = "https://NCNORTHBOUND.SDN.LAB"
 
     Tenants              = 
     @(
@@ -136,7 +140,8 @@
         @{
             HypvHostname = "SDN-HOST01.SDN.LAB"
             VHDFile      = "Win2019-Core-Container.vhdx"
-            Tenant       = "Fabrikam"            
+            Tenant       = "Fabrikam"
+            Name         = 'Fabrikam-CH02'                        
             VMMemory             = 4GB
             VMProcessorCount     = 4
             VIP          = "41.40.40.9"     
@@ -175,7 +180,4 @@
         }
     )
     
-
-    RestURI = "https://NCFABRIC.SDN.LAB"
-
 }

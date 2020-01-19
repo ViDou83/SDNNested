@@ -5,7 +5,7 @@
     # Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
     VMSize                     = "Standard_E8_v3"
 
-    VMName                      = "SDN-01132020"
+    VMName                      = "SDN-011820"
     VMLocalAdminUser            = "vidou"
     VMLocalAdminSecurePassword  = "Azertyuiop!01" 
     ## Azure Accoun t

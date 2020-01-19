@@ -3,8 +3,7 @@
 
     VHDPath              = "F:\VMs\Template"
     VHDFile              = "Win2019-Core.vhdx"
-    
-    VHDGUIFile              = "Win2019-GUI.vhdx"
+    VHDGUIFile           = "Win2019-GUI.vhdx"
 
     VMLocation           = "F:\VMs"
     DomainFQDN           = "SDN.LAB"
@@ -17,8 +16,11 @@
     DomainJoinUsername   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
 
-    AzureVMadmin         = "vidou"
-    AzureVMPwd           = "Azertyuiop!01"
+    VMHostadmin         = "vidou"
+    VMHostPwd           = "Azertyuiop!01"
+
+    #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
+    SDNonS2D          = $False
 
     HostSdnNICs     = 
     @( 
@@ -33,7 +35,9 @@
             VMMemory     = 4GB;
             VMProcessorCount = 2;
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 }
+                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },
+                @{ Name = "Ethernet 2"; IPAddress = '10.10.56.1/24'; Gateway = ''; DNS = '' ; VLANID = 11 };
+
             )   
         }
     )
@@ -42,16 +46,18 @@
     @(
         @{
             ComputerName = 'SDN-HOST01'; 
-            VMMemory     = 48GB;
-            VMProcessorCount = 8;
+            VMMemory     = 24GB;
+            VMProcessorCount = 4;
+            VMDiskSize = 384GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
         },   
         @{
             ComputerName = 'SDN-HOST02'; 
-            VMMemory     = 48GB;
-            VMProcessorCount = 8;
+            VMMemory     = 24GB;
+            VMProcessorCount = 4;
+            VMDiskSize = 384GB;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -121,7 +127,8 @@
     TORrouter = 
     @(
         @{
-            ComputerName = 'SDN-TORGW'; 
+            #ComputerName = 'SDN-TORGW'; 
+            ComputerName = 'SDN-DC01'; 
 
             
             NICs    = @( 
@@ -156,20 +163,18 @@
     S2DDiskNumber        = 3
     S2DClusterIP         = "10.184.108.4"
     S2DClusterName       = "SDNFABRIC"
-   
+    
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
     # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
-    # SwitchName=''
+    SwitchName           = "SDN"
 
     # Amount of Memory and number of Processors to assign to VMs that are created.
     # If not specified a default of 8 procs and 8GB RAM are used.
     VMMemory             = 2GB
     VMProcessorCount     = 2
-
-    SwitchName           = "SDN"
-
-    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.254"; }
+    
+    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.1"; }
 
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''
@@ -180,5 +185,4 @@
     # DomainJoinSecurePassword  = ''
     # LocalAdminSecurePassword   = ''
     # NCSecurePassword   = ''
-
 }

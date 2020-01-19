@@ -58,6 +58,14 @@ $LocalAdminDomainUserName = $configdata.LocalAdminDomainUser.Split("\")[1]
 
 $uri = $configdata.RestURI   
 
+$check = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -PassInnerException -erroraction SilentlyContinue
+if ( ! $check )
+{
+    $exception = $error.exception[0].innerexception
+    throw "ERROR: $exception. Stop Execution"
+}
+
+
 #Find the Access Control List to user per virtual subnet  
 #$acllist = Get-NetworkControllerAccessControlList -ConnectionUri $uri -ResourceId "AllowAll"  
 #Find the HNV Provider Logical Network  
@@ -71,7 +79,7 @@ foreach ($ln in $logicalnetworks) {
   
 foreach ($Tenant in $configdata.Tenants) {
     #Create the Virtual Subnet  
-   Write-SDNNestedLog  "Configuring and VNET for $($Tenant.Name)"
+    Write-SDNNestedLog  "Pushing VNET config for $($Tenant.Name) to $uri"
     $vsubnet = new-object Microsoft.Windows.NetworkController.VirtualSubnet  
     $vsubnet.ResourceId = $Tenant.TenantVirtualSubnetId  
     $vsubnet.Properties = new-object Microsoft.Windows.NetworkController.VirtualSubnetProperties  
@@ -91,9 +99,11 @@ foreach ($Tenant in $configdata.Tenants) {
 
     $gwPool = Get-NetworkControllerGatewayPool -ConnectionUri $uri  
 
-    foreach ($Gw in $configdata.TenantvGWs) {    
-        if ( $Gw.Tenant -eq $Tenant.Name) { 
-           Write-SDNNestedLog  "Configuring Virutal GW for $($Tenant.Name)"
+    foreach ($Gw in $configdata.TenantvGWs) 
+    {    
+        if ( $Gw.Tenant -eq $Tenant.Name) 
+        { 
+           Write-SDNNestedLog  "Pushing vGW config for $($Tenant.Name) to $uri"
             
             # Create a new object for Tenant Virtual Gateway  
             $VirtualGWProperties = New-Object Microsoft.Windows.NetworkController.VirtualGatewayProperties   
@@ -204,8 +214,9 @@ foreach ($Tenant in $configdata.Tenants) {
                 -ResourceId "nwConnection_$($gw.Type)" -Properties $nwConnectionProperties -Force
 
             #Configure BGP on the vGW 
-            if ( $gw.BGPEnabled -eq $True) {     
-               Write-SDNNestedLog  "Configuring BGP on vGW for $($Tenant.name)"
+            if ( $gw.BGPEnabled -eq $True) 
+            {     
+                Write-SDNNestedLog  "Pushing BGP config for $($Tenant.name) vGW to $uri"
 
                 # Create a new object for the Tenant BGP Router  
                 $bgpRouterproperties = New-Object Microsoft.Windows.NetworkController.VGwBgpRouterProperties   
@@ -299,22 +310,17 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
             import-module networkcontroller  
 
-            if( get-cluster -ea SilentlyContinue ){ 
-               Write-SDNNestedLog   "Adding VM=$($TenantVM.Name) to the failover cluster"            
-                Get-VM -VMName $TenantVM.Name | Add-ClusterVirtualMachineRole 
-            }
-
             try {
                 Start-VM $TenantVM.Name -ErrorAction stop
             }
             catch { 
-               Write-SDNNestedLog  "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
+                Write-SDNNestedLog  "VM $($TenantVM.Name) cannot be started on $env:Computername. Stopping script execution"       
                 break;
             }
             
             WaitLocalVMisBooted $TenantVM.Name $cred
 
-           Write-SDNNestedLog "Stopping VM $($TenantVM.Name)"
+            Write-SDNNestedLog "Stopping VM $($TenantVM.Name)"
             Stop-VM -VMName $TenantVM.Name -Force 
         } -ArgumentList $paramsTenant,$TenantVM, $cred
 
@@ -345,7 +351,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
             $vmnicproperties.IpConfigurations = @($ipconfiguration)
 
-           Write-SDNNestedLog  "Pushing  $($TenantVM.Name) NIC config to REST API"
+            Write-SDNNestedLog  "Pushing  $($TenantVM.Name) NIC config to REST API"
 
             $nic = New-NetworkControllerNetworkInterface -ResourceID $vmnicResourceId -Properties $vmnicproperties -ConnectionUri $uri -Force
         }
@@ -396,7 +402,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
 
             $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress   
             
-           Write-SDNNestedLog "Starting VM $($TenantVM.Name)"
+            Write-SDNNestedLog "Starting VM $($TenantVM.Name)"
             Start-VM $TenantVM.Name
             WaitLocalVMisBooted $TenantVM.Name $cred
         } -ArgumentList $TenantVM, $uri, $cred
@@ -429,50 +435,98 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 $ip = "$($ip.split(".")[0])" + "."  + "$($ip.split(".")[1])" + "." + "$($ip.split(".")[2])" + "."  + "$LastByte"
             }
 
-           Write-SDNNestedLog   "Adding ContainerIpPool=$($TenantVM.ContainersIpPool) to $($TenantVM.Name) VMNic Object"
+            Write-SDNNestedLog "Adding ContainerIpPool=$($TenantVM.ContainersIpPool) to $($TenantVM.Name) VMNic Object"
             $nic = New-NetworkControllerNetworkInterface -ResourceID $nic.resourceid -Properties $nic.properties -ConnectionUri $uri -Force
+
+            $LB = $ConfigData.SlbVIPs | ? Tenant -eq $TenantVM.Tenant
 
             Invoke-Command -ComputerName $TenantVM.HypvHostname {
                 $ContainersIPs = $args[0]
                 $TenantVM = $args[1]
                 $cred = $args[2]
+                $LB = $args[3]
 
-                if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+                $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
+                #Session ID Dec:999 is System one 
+                $WMIdrive = (Get-WmiObject -Class Win32_MappedLogicalDisk | ? ProviderName -Match $LocalVMName | ? sessionId -ne 999)[-1]
+
+                if ( ! $WMIdrive ){
+                    $UNCprefix = "\\$LocalVMName\Template"
+                }
+                else {
+                    $UNCprefix = $($WMIdrive.Name)
+                }
+
+                if ( ! ( Test-Path $UNCprefix)  )
+                {
+                    Write-SDNNestedLog "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS THE SHARE \\$LocalVMName\Template / $UNCprefix. Please map the drive again"
+                    throw "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS THE SHARE \\$LocalVMName\Template / $UNCprefix. Please map the drive again"
+                }
+
+                if ( ! (Get-Module SDNNested-Module ) ){ import-module $UNCprefix\SDNNested\utils\SDNNested-Module.psm1 }
 
                 $pssession = New-PSSession -VMName $TenantVM.Name -Credential $cred     
-                copy-item -ToSession $pssession -Destination C:\temp -Path Z:\SDNNested\utils\Container\ -Recurse -force
-           
+                if ( $pssession )
+                {
+                    Write-SDNNestedLog "Sync needed scripts to ContainerHost $($TenantVM.Name)"
+                    copy-item -ToSession $pssession -Destination C:\temp -Path $UNCprefix\SDNNested\utils\Container\ -Recurse -force
+                }
+                else
+                {
+                    Write-SDNNestedLog "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS  $($TenantVM.Name) from PS"
+                    throw "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS  $($TenantVM.Name) from PS"
+                }
+
                 Invoke-Command -VMName $TenantVM.Name -Credential $cred {
                     #Checking docker service status
-                    $ContainersIPs = $args
+                    $ContainersIPs = $args[0]
+                    $LB = $args[1]
+
                     get-service docker |  %{ if($_.Status -ne "Running"){ Start-Service docker} }
                     cd c:\temp 
                     
-                   Write-SDNNestedLog   "Creating docker custom IIS container image from docker file iis-site"
+                    Write-Host "Creating docker custom IIS container image from docker file iis-site"
                     docker build -f C:\temp\iis-site -t iis-site . 
                     
-                   Write-SDNNestedLog   "Creating docker l2bridge network"
-                    docker network create -d l2bridge -o com.docker.network.windowsshim.interface="Ethernet" --subnet="172.16.1.0/24" `
-                        --gateway="172.16.1.1" MyContainerOverlayNetwork
+                    Write-Host "Creating docker l2bridge network"
+                    
+                    $NetIPAddr = Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4 | select IPAddress,PrefixLength,ifIndex
+                    $subnet = (Get-NetRoute -ifIndex $($NetIPAddr.ifIndex) | ? DestinationPrefix -match "/$($NetIPAddr.PrefixLength)").DestinationPrefix
+                    $NextHop = (Get-NetIPConfiguration -ifIndex $NetIPAddr.ifIndex).IPv4DefaultGateway.nexthop
 
-                   Write-SDNNestedLog  "Running $($ContainersIPs.count) containers"
-                    foreach ( $IP in $ContainersIPs){
-                        docker run -d --restart always --network=MyContainerOverlayNetwork --ip="$IP" -v C:\temp\:C:\temp `
-                            -e CONTAINER_HOST=$(hostname) iis-site powershell C:\temp\GenIISDefault.ps1          
+                    docker network create -d l2bridge -o com.docker.network.windowsshim.interface="Ethernet" --subnet="$subnet" `
+                        --gateway="$NextHop" Myl2bridgeNetwork
+
+                    Write-Host  "Running $($ContainersIPs.count) containers"
+                    foreach ( $IP in $ContainersIPs)
+                    {
+                        docker run -d --restart always --network=Myl2bridgeNetwork --ip="$IP" -v C:\temp\:C:\temp `
+                            -e CONTAINER_HOST=$($env:computername) iis-site powershell C:\temp\GenIISDefault.ps1          
                     }
 
-                    import-module c:\temp\HNS.V2.psm1
+                    if( Test-Path c:\temp\HNS.V2.psm1 )
+                    {
+                        import-module c:\temp\HNS.V2.psm1
 
-                    $VIP=(Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "172.16.1.").IPAddress
-                    $endpoints = Get-HnsEndpoint
-                   Write-SDNNestedLog  "Creating LoadBalancer on Container Host using HNVv2 API "
-                    New-HnsLoadBalancer -InternalPort 80 -ExternalPort 80 -Endpoints $endpoints.Id -Protocol 6 -Vip $VIP -DSR
-
-                } -ArgumentList $ContainersIPs
-            } -ArgumentList $ContainersIPs, $TenantVM, $cred
+                        #$VIP=(Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "172.16.1.").IPAddress
+                        $VIP = $NetIPAddr.IPAddress
+                        $endpoints = Get-HnsEndpoint
+                        Write-Host  "Creating LoadBalancer on ContainerHost $env:computername  using HNVv2 API - use VFPCTRL tool to check NAT rules"
+                        
+                        $protocol = if ( $LB.protocol -eq "TCP") { 6 }elseif($LB.protocol -eq "UDP"){ 17 }
+                        
+                        New-HnsLoadBalancer -InternalPort $LB.FrontendPort -ExternalPort $LB.BackendPort -Endpoints $endpoints.Id -Protocol $Protocol -Vip $VIP -DSR
+                    }
+                    else 
+                    {
+                        Write-Host -ForegroundColor Red "Creating LoadBalancer on ContainerHost $env:computername failed. LB to Public VIP will failed"
+                    }
+                } -ArgumentList $ContainersIPs, $LB
+            } -ArgumentList $ContainersIPs, $TenantVM, $cred, $LB
         }
-        else {
-           Write-SDNNestedLog   "Adding required features on VM $($TenantVM.Name)"
+        else 
+        {
+            Write-SDNNestedLog   "Adding required features on VM $($TenantVM.Name)"
             
             Invoke-Command -ComputerName $TenantVM.HypvHostname {
                 $TenantVM = $args[0]
@@ -500,11 +554,12 @@ foreach ($TenantVM in $configdata.TenantVMs)
 "@
                     Add-Content -Path C:\inetpub\wwwroot\iisstart.htm $content
                 }
-
-                if( get-cluster -ea SilentlyContinue ){ 
-                   Write-SDNNestedLog   "Move VM=$($TenantVM.Name) to the node configured"                
+                <#
+                if( (Get-VM $TenantVM.Name | Get-VMHardDiskDrive).Path -match "clusterStorage" ){ 
+                    Write-SDNNestedLog   "Move VM=$($TenantVM.Name) to the node configured"                
                     Get-VM $TenantVM.Name | Move-ClusterVirtualMachineRole -Node $TenantVM.HypvHostname -ErrorAction SilentlyContinue
                 } 
+                #>
             } -ArgumentList $TenantVM, $cred
         }
 
@@ -514,8 +569,8 @@ foreach ($TenantVM in $configdata.TenantVMs)
     }
 }
 
-foreach ($vip in $configdata.SlbVIPs) {
-    
+foreach ($vip in $configdata.SlbVIPs) 
+{
     $vipLogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri -ResourceId "PublicVIP"
     $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties
 
@@ -577,7 +632,7 @@ foreach ($vip in $configdata.SlbVIPs) {
         if ($nic) 
         {
             $nic.Properties.IpConfigurations[0].Properties.LoadBalancerBackendAddressPools = $lb.Properties.BackendAddressPools[0]
-           Write-SDNNestedLog   "Adding NIC ipconfig to LB backend address pool"
+            Write-SDNNestedLog   "Adding NIC ipconfig to LB backend address pool"
             New-NetworkControllerNetworkInterface -ResourceId $nic.ResourceId -Properties $nic.Properties `
                 -ConnectionUri $uri -Force 
         }
@@ -591,15 +646,17 @@ foreach ($vip in $configdata.SlbVIPs) {
 winrm set winrm/config/client '@{TrustedHosts="*"}'
 
 try{
-    $configdataAZVM = [hashtable] (iex (gc .\configFiles\$($configdata.ConfigFileName)\SDNNestedAzHost.psd1 | out-string))
+    $configdataInfra = [hashtable] (iex (gc .\configFiles\$($configdata.ConfigFileName)\SDNNested-Deploy-Infra.psd1 | out-string))
 }catch {} 
 
-if ($configdataAZVM.VMLocalAdminSecurePassword){
-    $secpasswd = ConvertTo-SecureString $configdataAZVM.VMLocalAdminSecurePassword -AsPlainText -Force
-    $AzCred = New-Object System.Management.Automation.PSCredential($configdataAZVM.VMLocalAdminUser,$secpasswd)
+if ($configdataInfra.VMHostPwd){
+    $secpasswd = ConvertTo-SecureString $configdataInfra.VMHostPwd -AsPlainText -Force
+    $AzCred = New-Object System.Management.Automation.PSCredential($configdataInfra.VMHostadmin,$secpasswd)
 }else{
-    $AzCred = Get-Credential $configdataAZVM.VMLocalAdminUser
+    $AzCred = Get-Credential $configdataInfra.VMHostadmin
 }
+
+$LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
 
 foreach( $Tenant in $configdata.Tenants) 
 { 
@@ -614,13 +671,13 @@ foreach( $Tenant in $configdata.Tenants)
        Write-SDNNestedLog  "Fixing GRE tunnel peer on 'physical' $PhysicalGwVMName"
         if ( $GreDestination)
         {
-            Invoke-Command -Computername $configdataAZVM.VMName  -Credential $AzCred {
+            Invoke-Command -Computername $LocalVMName  -Credential $AzCred {
                 $cred=$args[0]
                 $PhysicalGwVMName=$args[1]
                 $GreDestination=$args[2]
                 Invoke-Command  -VMName $PhysicalGwVMName -Credential $cred {
                     $GreDestination=$args[0]
-                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false 
+                    Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false -force
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -Destination $GreDestination
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $true
                 } -ArgumentList $GreDestination
@@ -634,14 +691,14 @@ foreach( $Tenant in $configdata.Tenants)
     if( $BgpPeer)
     {
        Write-SDNNestedLog  "Fixing BGP Peering configuration tunnel peer on 'physical' $($Tenant.PhysicalGwVMName)"
-        Invoke-Command  -Computername $configdataAZVM.VMName  -Credential $AzCred { 
+        Invoke-Command  -Computername $LocalVMName -Credential $AzCred { 
             $cred=$args[0]
             $PhysicalGwVMName=$args[1]
             $BgpPeer=$args[2]
 
             Invoke-Command -VMName $PhysicalGwVMName -Credential $cred {
                 $BgpPeer=$args[0]
-                Get-BgpPeer | Set-BgpPeer -PeerIpAddress $BgpPeer
+                Get-BgpPeer | Set-BgpPeer -PeerIpAddress $BgpPeer -force
                 $LocalBgpIP = (Get-BgpPeer).LocalIPAddress
                 
                 if( $null -eq (Get-NetIPAddress | ? IPAddress -Match $LocalBgpIP))

@@ -103,6 +103,7 @@
             Tenant       = "Contoso"
             Name         = 'Contoso-VM02'
             roles        = @("Web-Server", "Web-Mgmt-Service")
+            VIP          = "41.40.40.8"             
             NICs         = @( 
                 @{ 
                     Name = "Contoso-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
@@ -115,6 +116,7 @@
             Tenant       = "Fabrikam"
             Name         = 'Fabrikam-VM01'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
+            VIP          = "41.40.40.9"             
             NICs         = @( 
                 @{ 
                     Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
@@ -127,6 +129,7 @@
             Tenant       = "Fabrikam"            
             Name         = 'Fabrikam-VM02'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
+            VIP          = "41.40.40.9"             
             NICs         = @( 
                 @{ 
                     Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 

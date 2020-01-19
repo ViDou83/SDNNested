@@ -5,6 +5,8 @@
     VHDFile              = "Win2019-Core.vhdx"
     VMLocation           = "C:\ClusterStorage\S2D_CSV1\VMs"
     
+    ConfigFileName       = "Azure_E16_v3"
+
     ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
 
     VMMemory             = 2GB
@@ -15,6 +17,8 @@
 
     DomainJoinUserName   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
+
+    RestURI = "https://NORTHBOUNDAPI.SDN.LAB"
 
     Tenants              = 
     @(
@@ -98,6 +102,7 @@
             HypvHostname = "SDN-HOST01.SDN.LAB"
             Tenant       = "Contoso"
             Name         = 'Contoso-VM02'
+            VIP          = "41.40.40.8"             
             roles        = @("Web-Server", "Web-Mgmt-Service")
             NICs         = @( 
                 @{ 
@@ -111,6 +116,7 @@
             Tenant       = "Fabrikam"
             Name         = 'Fabrikam-VM01'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
+            VIP          = "41.40.40.9"
             NICs         = @( 
                 @{ 
                     Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
@@ -123,6 +129,7 @@
             Tenant       = "Fabrikam"            
             Name         = 'Fabrikam-VM02'
             roles        = @("Web-Server", "Web-Mgmt-Service")            
+            VIP          = "41.40.40.9"
             NICs         = @( 
                 @{ 
                     Name = "Fabrikam-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
@@ -155,8 +162,4 @@
             TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
         }
     )
-    
-
-    RestURI = "https://NCFABRIC.SDN.LAB"
-
 }
