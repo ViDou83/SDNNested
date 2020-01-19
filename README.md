@@ -50,7 +50,7 @@ IP subnets and VLAN (can be changed):
     * 41.40.40.8 -> CONTOSO
     * 41.40.40.9 -> FABRIKAM
 
-## Usage
+## USAGE
 PREREQUISITES : You must have VHDX images located inside the folder where the VM will be stored 
 Ex: F:\VMs\Template\
 
