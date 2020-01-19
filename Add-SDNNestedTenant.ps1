@@ -644,7 +644,7 @@ foreach ($vip in $configdata.SlbVIPs)
 }
 
 #Fixing GRE and BGP peering on Tenants "physical" gateways
-winrm set winrm/config/client '@{TrustedHosts="*"}'
+winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
 
 try{
     $configdataInfra = [hashtable] (iex (gc .\configFiles\$($configdata.ConfigFileName)\SDNNested-Deploy-Infra.psd1 | out-string))
@@ -704,7 +704,7 @@ foreach( $Tenant in $configdata.Tenants)
                 
                 if( $null -eq (Get-NetIPAddress | ? IPAddress -Match $LocalBgpIP))
                 {
-                    Get-NetAdapter | New-NetIPAddress -IPAddress $LocalBgpIP -PrefixLength 24
+                    Get-NetAdapter | New-NetIPAddress -IPAddress $LocalBgpIP -PrefixLength 24 | Out-Null
                 } 
 
             } -ArgumentList $BgpPeer

@@ -394,7 +394,6 @@ foreach ( $GW in $configdata.TenantInfraGWs)
                         $tunnelMode = $true                                    
                     }
                     Write-Host "Installing Remote Access VPNtype=$VpnType on $env:COMPUTERNAME"
-
                     Install-RemoteAccess -VpnType $VpnType  
                 
                     $run = (Get-Service RemoteAccess).status
@@ -442,6 +441,10 @@ foreach ( $GW in $configdata.TenantInfraGWs)
                                 -PeeringMode Automatic
                         }   
                     }
+
+                    #To be able to do PSRemote to Tenant VMs
+                    winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
+
                 } -ArgumentList $TenantvGW
                 Write-SDNNestedLog "--> Staging $($GW.ComputerName) is done"
             }     
