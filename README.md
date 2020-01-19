@@ -2,6 +2,9 @@
 SDNNested is a collection of Powershell Scrits that help to automate the deployment of a Microsoft SDNv2 LAB on a Nested Environement. 
 That can be executed either from a physical machine or a VM. 
 
+![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
+![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
+
 # General requirement
 *   HYPV role is required (Nested Virtualization will be use) 
 *   A minimum of 64GB of RAM (use config file under .\configfiles\Azure_E8_v3 )
@@ -45,10 +48,6 @@ IP subnets and VLAN (can be changed):
 - Public VIP which can be reached from AzVM 
     * 41.40.40.8 -> CONTOSO
     * 41.40.40.9 -> FABRIKAM
-
-# Diagram of deployed LAB
-![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
-![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
 
 ## Usage
 PREREQUISITES : You must have VHDX images located inside the folder where the VM will be stored 
