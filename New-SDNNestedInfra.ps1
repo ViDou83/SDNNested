@@ -545,7 +545,8 @@ foreach ( $ToR in $configdata.TORrouter)
         {
             foreach( $NIC in $ToR.NICs)
             {  
-                foreach( $IPAddress in $vNIC.IPAddresses){
+                foreach( $IPAddress in $vNIC.IPAddresses)
+                {
                     if( $NIC.IPAddress  -match $IPAddress ){
                         $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NIC.VlanID
                     }

@@ -5,14 +5,14 @@
     # Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
     VMSize                     = "Standard_E8_v3"
 
-    VMName                      = "SDN-011820"
+    #VMName                      = "SDN-011820"
     VMLocalAdminUser            = "vidou"
     VMLocalAdminSecurePassword  = "Azertyuiop!01" 
     ## Azure Accoun t
-    LocationName                = "FranceCentral"
+    #LocationName                = "FranceCentral"
     ResourceGroupName           = "RG-AZ-FRANCE"
     VnetName                    = "VNET1-AZ-FRANCE"
-    SubnetName                  = "SUB-ARM-SRV-WIN"
+    SubnetName                  = "AzFranceSubnet"
     #SecurityGroupName          = "$($VMName)_NetSecurityGroup"
     #PublicIPAddressName        = "$($VMName)_PIP1"
     subscription                = "Microsoft Azure Internal Consumption"

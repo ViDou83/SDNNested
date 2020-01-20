@@ -15,7 +15,8 @@ https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-
     *   see https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization
     
 ## Example of deployed infrastucture
-IMPORTANT: To be sucessful, it is recommended to understand config files structure before start a deployement. 
+IMPORTANT: To be sucessful, it is recommended to understand config files structure before start a deployement.
+
 You can either use provided config files or simply copy one folder and rename it based on your need (in that case config files structure needs to be well understood).
 
 VM acting as Hypv Server (can be a Azure VM) :
