@@ -2,30 +2,44 @@
 
     ScriptVersion               = "2.0"
 
-    # Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
-    VMSize                      = "Standard_E16_v3"
+    # Azure VM size 
+    VMSize                     = "Standard_E16_v3"
 
-    VMName                      = "SDN-01192019"
-    VMLocalAdminUser            = "vidou"
-    VMLocalAdminSecurePassword  = "Azertyuiop!01" 
-    ## Azure Accoun t
-    LocationName                = "FranceCentral"
+    #Below define the Azure VMName, you can use the script cmd line to define it as well
+    #VMName                      = "SDN-011820"
+    
+    #Azure VM credential
+    VMLocalAdminUser            = "Localuser"
+    VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
+    
+    # Azure Account information
+    # recommendation would be to create it from portal 1st otherwise, you will be prompted
     ResourceGroupName           = "RG-AZ-FRANCE"
     VnetName                    = "VNET1-AZ-FRANCE"
-    SubnetName                  = "SUB-ARM-SRV-WIN"
-    #SecurityGroupName          = "$($VMName)_NetSecurityGroup"
-    #PublicIPAddressName        = "$($VMName)_PIP1"
-    subscription                = "Microsoft Azure Internal Consumption"
-    #NICName                    = "$($VMName)_NIC1"
-    #DNSNameLabel               = $VMName
+    SubnetName                  = "AzFranceSubnet"
+    
+    #subscription                = "Microsoft Azure Internal Consumption"
+    #Azure StorageType
     storageType                 = 'StandardSSD_LRS'
 
+    #Network Security Group where the VM will get (RDP and RemoteWinRM will be allowed!!!!)
     NSGName                     = "NSG-AZ-FRANCE" 
 
+    # Azure VM Disk number and size 
+    # Below 8 Disks with 128GB will be aggregated to one vDISK of 1TB
+    # It helps to maximize IOPS
     DiskNumber                  = 8
     DiskSizeGB                  = 128
+    
+    # Remote share where the VHDX template are located. 
+    # Share name Tree structure must be 
+    #    \\FQDN\sdntemplate
+    #                       \template\*.VHDX
+    #                       \apps\*.exe 
+    # In my case, I'm using an Azure File Share
+    # AzureVM Drive letter where VHDX will be copied 
     vDiskDriveLetter            = 'F'
-    AZFileShare                 = "\\rgazfrancediag.file.core.windows.net\sndtemplate"
-    AZFileUser                  = "Azure\rgazfrancediag"
-    AZFilePwd                   = "U6PEMjWhJ3D0eZb1EfINfTsk4hUsUF30Wg0yVJb+ezA9KUgQBjv8VWoju2UfQQqi4WB7lGzYA3BAzZlAbs/weQ=="
+    AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
+    AZFileUser                  = "Azure\myuser"
+    AZFilePwd                   = "MyVeryComplexPassword"
 }

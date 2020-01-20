@@ -2,32 +2,38 @@
     ScriptVersion        = "2.0"
 
     VHDPath              = "F:\VMs\Template"
+    #The VHD file name has to match with the one located on the above path
     VHDFile              = "Win2019-Core.vhdx"
     VHDGUIFile           = "Win2019-GUI.vhdx"
 
     VMLocation           = "F:\VMs"
+    #Domain of the SDN infrastructure (NC/MUX/GW will be joined)
     DomainFQDN           = "SDN.LAB"
-
+    #IP PLAN
     ManagementSubnet     = "10.184.108.0/24"
     ManagementGateway    = "10.184.108.1"
     ManagementDNS        = @("10.184.108.1")
     ManagementVLANID     = 7
-
+    #Domain users infos
     DomainJoinUsername   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
 
-    VMHostadmin         = "vidou"
-    VMHostPwd           = "Azertyuiop!01"
+    #Put the Username and Password of the Local Machine where SDNNested will be deploy
+    #In case of Azure, this is the Azure VM cred 
+    VMHostadmin         = "Localuser"
+    VMHostPwd           = "MyVeryComplexPassword"
 
     #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
     SDNonS2D          = $true
 
+    #LOCAL MACHINE / AZURE VM SDN vNICs 
     HostSdnNICs     = 
     @( 
         @{ Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
         @{ Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
     )   
 
+    #DCs, HYPV HOSTs (where SDN stack will be deployed), ToR Router and Tenants External GWs def 
     DCs                  = 
     @(
         @{
@@ -36,7 +42,8 @@
             VMProcessorCount = 2;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 }
-            )   
+                #Second NIC in case if ToR is going to be deployed (see example on other config files)
+           )   
         }
     )
 
@@ -60,6 +67,7 @@
         }
     )
 
+    #External Tenant GWs - simulate external connectivity
     TenantInfraGWs                  = 
     @(
         @{
@@ -78,6 +86,7 @@
         }
     )
 
+    #Will be used to configure BPG peering between external Tenant's GW and SDN multi-tenant vGW (see SDNNested-Deploy-Tenant.psd1 config file)
     TenantvGWs           =
     @(
         @{
@@ -119,7 +128,9 @@
         }
     )
 
-    
+    # Top of Rack (ToR) router configuration 
+    # if ComputerName is existing VMs (eg. DC), deploy RRAS on it and configure BGP and so on 
+    # otherwise deploy a dedicated VM
     TORrouter = 
     @(
         @{
@@ -156,20 +167,22 @@
     S2DDiskSize          = 128GB
     S2DDiskNumber        = 3
     S2DClusterIP         = "10.184.108.4"
+    # Please use this name to add the cluster to WAC (eg. SDNFABRIC.SDN.LAB)
     S2DClusterName       = "SDNFABRIC"
    
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    #Product Key of VMs
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
 
     # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
-    # SwitchName=''
+    SwitchName           = "SDN"
 
     # Amount of Memory and number of Processors to assign to VMs that are created.
     # If not specified a default of 8 procs and 8GB RAM are used.
+    # Can be overloaded at VMs level
     VMMemory             = 2GB
     VMProcessorCount     = 2
-
-    SwitchName           = "SDN"
-
+    
+    # Tenants VIP could be reached from the local machine (or the AzureVM)
     PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.254"; }
 
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.

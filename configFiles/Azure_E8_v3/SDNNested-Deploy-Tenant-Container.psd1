@@ -3,11 +3,12 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
+    #Where Tenants VMs will be stored, generally same than the SDNExpressConfig
     VMLocation           = "D:\VMs"
-
+    #Has to match with the folder name 
     ConfigFileName       = "Azure_E8_v3"
 
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
 
     VMMemory             = 2GB
     VMProcessorCount     = 2
@@ -42,6 +43,7 @@
         }
     )
 
+    #This block must be the same the one defined on SDNNested-Infra.psd1 to have everyhting auto-configured 
     TenantvGWs           =
     @(
         @{
@@ -83,6 +85,7 @@
         }
     )
     
+    #Tenants VMs
     TenantVMs            = 
     @(
         @{
@@ -92,8 +95,13 @@
             Name         = 'Contoso-CH01'
             VMMemory             = 4GB
             VMProcessorCount     = 4
-            roles        = @("ContainerHost")
+            # ContainerHost is not a Windows role but it will be used from the deployment script
+            # to make right decision
+            roles        = @("ContainerHost")   
             VIP          = "41.40.40.8"
+            # IMPORTANT : The IP pool of Containers (L2BRIDGE) running behind the VMNIC
+            # Below 2^3 - 1 = 7 additionnal addresses will be pushed to the NC API
+            # 7 IIS containers will be run and load balanced - see VIP IP addr above   
             ContainersIpPool = "172.16.1.32/29"             
             NICs         = @( 
                 @{ 
@@ -110,8 +118,13 @@
             Name         = 'Contoso-CH02'
             VMMemory             = 4GB
             VMProcessorCount     = 4
+            # ContainerHost is not a Windows role but it will be used from the deployment script
+            # to make right decision
             roles        = @("ContainerHost")
             VIP          = "41.40.40.8"
+            # IMPORTANT : The IP pool of Containers (L2BRIDGE) running behind the VMNIC
+            # Below 2^3 - 1 = 7 additionnal addresses will be pushed to the NC API
+            # 7 IIS containers will be run and load balanced - see VIP IP addr above   
             ContainersIpPool = "172.16.1.40/29"             
             NICs         = @( 
                 @{ 
@@ -156,6 +169,7 @@
         }
     )
 
+    #SLB configuration
     SlbVIPs                 =
     @(
         @{

@@ -3,11 +3,12 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
+    #Where Tenants VMs will be stored, generally same than the SDNExpressConfig
     VMLocation           = "D:\VMs"
-    
+    #Has to match with the folder name 
     ConfigFileName       = "Azure_E8_v3"
 
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
 
     VMMemory             = 2GB
     VMProcessorCount     = 2
@@ -42,6 +43,7 @@
         }
     )
 
+    #This block must be the same the one defined on SDNNested-Infra.psd1 to have everyhting auto-configured 
     TenantvGWs           =
     @(
         @{
@@ -139,6 +141,7 @@
         }
     )
 
+    #SLB configuration
     SlbVIPs                 =
     @(
         @{
