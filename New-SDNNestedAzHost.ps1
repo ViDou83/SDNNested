@@ -45,10 +45,8 @@ if( ! $configdata.VMLocalAdminUser )
 else
 {
     $VMLocalAdminUser = $configdata.VMLocalAdminUser
-    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword `
-        -AsPlainText -Force 
-    $Credential = `
-        New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
+    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword -AsPlainText -Force 
+    $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
 }
 
 # Checking VM Name 

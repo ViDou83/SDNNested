@@ -8,9 +8,9 @@
     #Below define the Azure VMName, you can use the script cmd line to define it as well
     #VMName                      = "SDN-011820"
     
-    #Azure VM credential
-    VMLocalAdminUser            = "Localuser"
-    VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
+    #Azure VM credential - if note defined will be prompted
+    #VMLocalAdminUser            = "Localuser"
+    #VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
     
     # Azure Account information
     # recommendation would be to create it from portal 1st otherwise, you will be prompted
