@@ -296,11 +296,11 @@ netsh advfirewall firewall add rule name=WinRMHTTPS dir=in action=allow protocol
         Write-Host "$VMName : Creating folder for VMs Storage"
 
         if (! (Test-Path "$($DriveLetter)\VMs") ) { 
-            mkdir "$($DriveLetter)\VMs"
-            mkdir "$($DriveLetter)\VMs\Template"
+            mkdir "$($DriveLetter)\VMs" | Out-File
+            mkdir "$($DriveLetter)\VMs\Template" | Out-File
         }
         if (! (Test-Path "$($DriveLetter)\VMs\Template") ) { 
-            mkdir "$($DriveLetter)\VMs\Template"
+            mkdir "$($DriveLetter)\VMs\Template" | Out-File
         }
 
         
