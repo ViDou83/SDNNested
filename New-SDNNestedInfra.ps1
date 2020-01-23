@@ -236,10 +236,10 @@ foreach ( $node in $configdata.HyperVHosts)
         New-SdnNestedVm @paramsHOST
 
         #required for nested virtualization
-        Write-SDNNestedLog  "Eabling ExposeVirtualizationExtensions on VM $($node.ComputerName)" 
+        Write-SDNNestedLog  "Enabling ExposeVirtualizationExtensions on VM $($node.ComputerName)" 
         Get-VM -Name $node.ComputerName | Set-VMProcessor -ExposeVirtualizationExtensions $true | out-null
         #Required to allow multiple MAC per vNIC
-        Write-SDNNestedLog  "Eabling MacAddressSpoofing on VMNis : $($node.ComputerName)" 
+        Write-SDNNestedLog  "Enabling MacAddressSpoofing on VMNis : $($node.ComputerName)" 
         Get-VM -Name $node.ComputerName | Get-VMNetworkAdapter | Set-VMNetworkAdapter -MacAddressSpoofing On
   
         Write-SDNNestedLog  "Creating VM DataDisks for VM $($node.ComputerName)" 
@@ -481,7 +481,7 @@ foreach ( $GW in $configdata.TenantInfraGWs)
 Write-SDNNestedLog "############"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "####"
-Write-SDNNestedLog "### STARTING ToR ROUTER DEPLOYMNET "
+Write-SDNNestedLog "### STARTING ToR ROUTER DEPLOYMNENT "
 Write-SDNNestedLog "####"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "############"
