@@ -11,7 +11,7 @@
     #Azure VM credential - if note defined will be prompted
     #VMLocalAdminUser            = "Localuser"
     #VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
-    
+
     # Azure Account information
     # recommendation would be to create it from portal 1st otherwise, you will be prompted
     ResourceGroupName           = "RG-AZ-FRANCE"
@@ -38,8 +38,10 @@
     #                       \apps\*.exe 
     # In my case, I'm using an Azure File Share
     # AzureVM Drive letter where VHDX will be copied 
-    vDiskDriveLetter            = 'F'
-    AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
-    AZFileUser                  = "Azure\myuser"
-    AZFilePwd                   = "MyVeryComplexPassword"
+    
+    vDiskDriveLetter            = "F:"
+    #If not provided, will be ignored
+    #AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
+    #AZFileUser                  = "Azure\myuser"
+    #AZFilePwd                   = "MyVeryComplexPassword"
 }

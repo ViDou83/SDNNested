@@ -250,7 +250,7 @@ foreach ( $node in $configdata.HyperVHosts)
         else
         {
             Add-VMDataDisk $node.ComputerName "VMs" $node.VMDiskSize 1
-            Add-VMDataDisk $node.ComputerName "S2D" 8GB 4
+            Add-VMDataDisk $node.ComputerName "S2D" 4GB 4
         }
 
         Start-VM $node.ComputerName 

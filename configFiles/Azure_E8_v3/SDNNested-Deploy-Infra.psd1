@@ -38,7 +38,7 @@
     @(
         @{
             ComputerName = 'SDN-DC01';
-            VMMemory     = 4GB;
+            VMMemory     = 2GB;
             VMProcessorCount = 2;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },                #Second in case if ToR is going to be deployed 
@@ -52,7 +52,7 @@
     @(
         @{
             ComputerName = 'SDN-HOST01'; 
-            VMMemory     = 24GB;
+            VMMemory     = 26GB;
             VMProcessorCount = 4;
             VMDiskSize = 384GB; #Will be ignore is SDNonS2D is $true
             NICs         = @( 

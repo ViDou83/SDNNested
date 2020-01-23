@@ -130,7 +130,8 @@ foreach ($Tenant in $configdata.Tenants) {
             # Create a new object for the Tenant Network Connection  
             $nwConnectionProperties = New-Object Microsoft.Windows.NetworkController.NetworkConnectionProperties   
 
-            if ( $gw.Type -eq "L3") {
+            if ( $gw.Type -eq "L3")
+            {
                 # Create a new object for the Logical Network to be used for L3 Forwarding  
                 $lnProperties = New-Object Microsoft.Windows.NetworkController.LogicalNetworkProperties  
 
@@ -178,7 +179,8 @@ foreach ($Tenant in $configdata.Tenants) {
 
                 $nwConnectionProperties.PeerIPAddresses = $gw.PeerIpAddrGW   
             }
-            elseif ($gw.type -eq "GRE") {
+            elseif ($gw.type -eq "GRE") 
+            {
 
                 # Update the common object properties  
                 $nwConnectionProperties.ConnectionType = $gw.type
@@ -197,7 +199,55 @@ foreach ($Tenant in $configdata.Tenants) {
                 $nwConnectionProperties.IPAddresses = @()   
                 $nwConnectionProperties.PeerIPAddresses = @()   
             }
+            elseif ( $gw.type -eq "IPSEC") 
+            {
+                # Create a new object for Tenant Network Connection  
+                $nwConnectionProperties = New-Object Microsoft.Windows.NetworkController.NetworkConnectionProperties   
 
+                # Update the common object properties  
+                $nwConnectionProperties.ConnectionType = $gw.type   
+                $nwConnectionProperties.OutboundKiloBitsPerSecond = 10000   
+                $nwConnectionProperties.InboundKiloBitsPerSecond = 10000   
+
+                # Update specific properties depending on the Connection Type  
+                $nwConnectionProperties.IpSecConfiguration = New-Object Microsoft.Windows.NetworkController.IpSecConfiguration   
+                $nwConnectionProperties.IpSecConfiguration.AuthenticationMethod = "PSK"   
+                $nwConnectionProperties.IpSecConfiguration.SharedSecret = $Gw.PSK   
+
+                $nwConnectionProperties.IpSecConfiguration.QuickMode = New-Object Microsoft.Windows.NetworkController.QuickMode   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.PerfectForwardSecrecy = "PFS2048"   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.AuthenticationTransformationConstant = "SHA256128"   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.CipherTransformationConstant = "DES3"   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.SALifeTimeSeconds = 1233   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.IdleDisconnectSeconds = 500   
+                $nwConnectionProperties.IpSecConfiguration.QuickMode.SALifeTimeKiloBytes = 2000   
+
+                $nwConnectionProperties.IpSecConfiguration.MainMode = New-Object Microsoft.Windows.NetworkController.MainMode   
+                $nwConnectionProperties.IpSecConfiguration.MainMode.DiffieHellmanGroup = "Group2"   
+                $nwConnectionProperties.IpSecConfiguration.MainMode.IntegrityAlgorithm = "SHA256"   
+                $nwConnectionProperties.IpSecConfiguration.MainMode.EncryptionAlgorithm = "AES256"   
+                $nwConnectionProperties.IpSecConfiguration.MainMode.SALifeTimeSeconds = 1234   
+                $nwConnectionProperties.IpSecConfiguration.MainMode.SALifeTimeKiloBytes = 2000   
+
+                # L3 specific configuration (leave blank for IPSec)  
+                $nwConnectionProperties.IPAddresses = @()   
+                $nwConnectionProperties.PeerIPAddresses = @()   
+
+                # Update the IPv4 Routes that are reachable over the site-to-site VPN Tunnel  
+                $nwConnectionProperties.Routes = @()   
+                $ipv4Route = New-Object Microsoft.Windows.NetworkController.RouteInfo   
+                $ipv4Route.DestinationPrefix = "14.1.10.1/32"   
+                $ipv4Route.metric = 10   
+                $nwConnectionProperties.Routes += $ipv4Route   
+
+                # Tunnel Destination (Remote Endpoint) Address  
+                $nwConnectionProperties.DestinationIPAddress = "10.127.134.121"   
+
+                # Add the new Network Connection for the tenant  
+                New-NetworkControllerVirtualGatewayNetworkConnection -ConnectionUri $uri -VirtualGatewayId $virtualGW.ResourceId `
+                    -ResourceId "Contoso_IPSecGW" -Properties $nwConnectionProperties -Force
+            }
+            
             # Update the IPv4 Routes that are reachable over the site-to-site VPN Tunnel  
             $nwConnectionProperties.Routes = @()   
             
@@ -446,20 +496,26 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 $cred = $args[2]
                 $LB = $args[3]
 
-                $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
-                #Session ID Dec:999 is System one 
-                $WMIdrive = (Get-WmiObject -Class Win32_MappedLogicalDisk | ? ProviderName -Match $LocalVMName | ? sessionId -ne 999)[-1]
 
-                if ( ! $WMIdrive ){
+                $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
+
+                $UNCprefix = "\\$LocalVMName\Template"
+                #Session ID Dec:999 is System one 
+                $WMIdrive = (Get-WmiObject -Class Win32_MappedLogicalDisk | ? ProviderName -Match $LocalVMName | ? sessionId -ne 999)
+
+                if ( ! $WMIdrive )
+                {
                     $UNCprefix = "\\$LocalVMName\Template"
                 }
-                else {
+                else 
+                {
+                    if ( $WMIdrive.count ){ $WMIdrive = $WMIdrive[-1] }
                     $UNCprefix = $($WMIdrive.Name)
                 }
+                #>
 
                 if ( ! ( Test-Path $UNCprefix)  )
                 {
-                    Write-SDNNestedLog "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS THE SHARE \\$LocalVMName\Template / $UNCprefix. Please map the drive again"
                     throw "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS THE SHARE \\$LocalVMName\Template / $UNCprefix. Please map the drive again"
                 }
 
