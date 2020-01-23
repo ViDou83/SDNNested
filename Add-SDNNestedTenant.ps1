@@ -715,6 +715,27 @@ if ($configdataInfra.VMHostPwd){
 
 $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
 
+#checking that Tenant remote GWs are running
+Invoke-Command  -Computername $LocalVMName -Credential $AzCred { 
+    $VMs = $args[0]
+    $LocalAdminCredential = $args[1]
+
+    foreach ( $vm in $VMs)
+    {
+        $state = (get-vm $vm).state
+        if ( $state -ne "Running" )
+        {
+            Write-Host  "$vm : is not running so starting it!"
+            start-vm $vm
+
+            Write-Host  "$vm : waiting the VM to be ready"
+            while ((Invoke-Command -VMName $vm -Credential $LocalAdminCredential { $env:COMPUTERNAME } `
+            -ea SilentlyContinue) -ne $vm) { Start-Sleep -Seconds 1 }
+            Write-Host  "$vm : waiting is ready"
+        }
+    }
+} -ArgumentList $configdata.Tenants.PhysicalGwVMName, $LocalAdminCredential
+
 foreach( $Tenant in $configdata.Tenants) 
 { 
     $PhysicalGwVMName = $Tenant.PhysicalGwVMName
