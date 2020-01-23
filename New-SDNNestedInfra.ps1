@@ -186,7 +186,7 @@ foreach ( $dc in $configdata.DCs)
 
     WaitLocalVMisBooted $dc.computername $DomainJoinCredential
 
-    if( $dc.Nics -gt 1 )
+    if( ($dc.Nics).count -gt 1 )
     {
         Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server binddins" 
 
