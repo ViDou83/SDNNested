@@ -191,10 +191,12 @@ $AzVM = Set-AzVMOSDisk -StorageAccountType $storageType -VM $AzVM -CreateOption 
 Write-SDNNestedLog  "Creating the AZ VM $VMName"
 
 # Creating VM
-New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
-if ( ! $AzVm )
+$res = New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
+
+
+if ( ! $reS.StatusCode )
 {
-        Write-SDNNestedLog  "Creating the AZ VM $VMName failed !"
+    Write-SDNNestedLog  "Creating the AZ VM $VMName failed !"
 }
 else
 {
@@ -234,7 +236,7 @@ else
     
     Write-SDNNestedLog  "AZ VM $VMName  Adding WinRM Firewall rules"
     Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -VMName $VMName -ScriptPath $env:temp\injectedscript.ps1 `
-        -CommandId 'RunPowerShellScript'
+        -CommandId 'RunPowerShellScript' | Out-Null
     Remove-Item $env:temp\injectedscript.ps1
 
     winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
@@ -320,7 +322,7 @@ else
 
             if ( Test-Path "Z:\Template") {
                 #cp Z:\Template\*.vhdx "$($DriveLetter)\VMs\Template" 
-                Robocopy.exe Z:\Template "$($DriveLetter)\VMs\Template" /MT
+                Robocopy.exe Z:\Template "$($DriveLetter)\VMs\Template" /MT /np | Out-Null	
             }
             else{
                 Write-Host "$VMName : Cannot get VHDX Template from $AZFileShare" 
@@ -329,7 +331,7 @@ else
 
             if ( Test-Path "Z:\apps") {
                 #cp Z:\apps C:\ -Recurse
-                Robocopy.exe Z:\apps "$($DriveLetter)\apps"  /MT
+                Robocopy.exe Z:\apps "$($DriveLetter)\apps"  /MT /np | Out-Null	
 
             }
         }
