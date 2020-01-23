@@ -190,7 +190,7 @@ foreach ( $dc in $configdata.DCs)
     {
         Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server binddins" 
 
-        Invoke-Command -VMName $dc -Credential $DomainJoinCredential {         
+        Invoke-Command -VMName $dc.computername -Credential $DomainJoinCredential {         
             $MgmtIp = (Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4).IPAddress
             #Removing DNS registration on 2nd adapter
             Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
