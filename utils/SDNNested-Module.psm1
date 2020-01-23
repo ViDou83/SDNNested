@@ -426,22 +426,6 @@ function New-ToRRouter()
     )
 
     #Adding RRAS and BGP config
-    Invoke-Command -VMName $VMName -Credential $credential { 
-        $TORrouter = $args[0]
-        
-        #Case where the VM is DC
-        if ( get-service DNS -ErrorAction SilentlyContinue | Out-Null )
-        {
-            #Removing DNS registration on 2nd adapter
-            Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
-            Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
-            #Get-NetAdapter "Ethernet 2" | Set-DnsClientServerAddress -ServerAddresses "" 
-            ipconfig /registerdns
-            dnscmd /ResetListenAddresses "$($configdata.ManagementDNS)"
-            Restart-Service DNS
-        }
-    }
-
     Add-WindowsFeatureOnVM $VMName $credential RemoteAccess
 
     Invoke-Command -VMName $VMName -Credential $credential { 

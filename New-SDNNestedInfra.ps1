@@ -185,6 +185,21 @@ foreach ( $dc in $configdata.DCs)
     #Adding credential to the cache
 
     WaitLocalVMisBooted $dc.computername $DomainJoinCredential
+
+    if( $dc.Nics -gt 1 )
+    {
+        Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server binddins" 
+
+        Invoke-Command -VMName $dc -Credential $DomainJoinCredential {         
+            $MgmtIp = (Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4).IPAddress
+            #Removing DNS registration on 2nd adapter
+            Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
+            Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
+            ipconfig /registerdns
+            dnscmd /ResetListenAddresses $MgmtIp
+            Restart-Service DNS
+        }
+    }
 }
 
 <#
@@ -485,78 +500,79 @@ Write-SDNNestedLog "### STARTING ToR ROUTER DEPLOYMNENT "
 Write-SDNNestedLog "####"
 Write-SDNNestedLog "########"
 Write-SDNNestedLog "############"
+
 #Creating ToR Router
-foreach ( $ToR in $configdata.TORrouter) 
+$credential = $LocalAdminCredentia
+$ToR = $configdata.TORrouter
+
+if ( $ToR.ComputerName -eq $configdata.DCs[0].computername )
+{ 
+    $credential = $DomainJoinCredential 
+}
+
+#If deploying ToR on dedicated VM otherwise deploy it on the existing one 'DC in general'
+if ( ! (get-vm $ToR.ComputerName -ErrorAction silentlycontinue ) ){
+    $paramsToR = @{
+        'VMLocation'          = $ConfigData.VMLocation;
+        'VMName'              = $ToR.ComputerName;
+        'VHDSrcPath'          = $ConfigData.VHDPath;
+        'VHDName'             = $ConfigData.VHDFile;
+        'VMMemory'            = $ConfigData.VMMemory;
+        'VMProcessorCount'    = $ConfigData.VMProcessorCount;
+        'SwitchName'          = $ConfigData.SwitchName;
+        'NICs'                = $ToR.NICs;
+        'CredentialDomain'    = $DomainJoinUserNameDomain;
+        'CredentialUserName'  = $DomainJoinUserNameName;
+        'CredentialPassword'  = $DomainJoinPassword;
+        'JoinDomain'          = $ConfigData.DomainFQDN;
+        'LocalAdminPassword'  = $LocalAdminPassword;
+        'DomainAdminDomain'   = $LocalAdminDomainUserDomain;
+        'DomainAdminUserName' = $LocalAdminDomainUserName;
+        'IpGwAddr'            = '';
+        'DnsIpAddr'           = $ConfigData.ManagementDNS;
+        'DomainFQDN'          = $ConfigData.DomainFQDN;
+        'ProductKey'          = $ConfigData.ProductKey;
+    }
+
+    New-SdnNestedVm @paramsToR
+
+    Start-VM $ToR.ComputerName
+
+    WaitLocalVMisBooted $ToR.ComputerName $credential
+
+    Invoke-Expression -Command `
+        "cmdkey /add:$($ToR.ComputerName) /user:Administrator /pass:$LocalAdminPassword" | Out-Null
+}
+
+#Checking is ToR is not already configured
+$result = invoke-command  -VMName $ToR.ComputerName -Credential $credential { 
+            if ( Test-Path C:\ToR.txt){ $true   }
+            else { $false }
+        } 
+if ( ! ( $result ) )
 {
-    $credential = $LocalAdminCredential
-    if ( $ToR.ComputerName -eq $configdata.DCs[0].computername )
-    { 
-        $credential = $DomainJoinCredential 
-    }
+    Write-SDNNestedLog "--> Tor Router : Staging $($ToR.ComputerName)"
+    New-ToRrouter $ToR.computername $credential $ToR
 
-    #If deploying ToR on dedicated VM otherwise deploy it on the existing one 'DC in general'
-    if ( ! (get-vm $ToR.ComputerName -ErrorAction silentlycontinue ) ){
-        $paramsToR = @{
-            'VMLocation'          = $ConfigData.VMLocation;
-            'VMName'              = $ToR.ComputerName;
-            'VHDSrcPath'          = $ConfigData.VHDPath;
-            'VHDName'             = $ConfigData.VHDFile;
-            'VMMemory'            = $ConfigData.VMMemory;
-            'VMProcessorCount'    = $ConfigData.VMProcessorCount;
-            'SwitchName'          = $ConfigData.SwitchName;
-            'NICs'                = $ToR.NICs;
-            'CredentialDomain'    = $DomainJoinUserNameDomain;
-            'CredentialUserName'  = $DomainJoinUserNameName;
-            'CredentialPassword'  = $DomainJoinPassword;
-            'JoinDomain'          = $ConfigData.DomainFQDN;
-            'LocalAdminPassword'  = $LocalAdminPassword;
-            'DomainAdminDomain'   = $LocalAdminDomainUserDomain;
-            'DomainAdminUserName' = $LocalAdminDomainUserName;
-            'IpGwAddr'            = '';
-            'DnsIpAddr'           = $ConfigDanoteta.ManagementDNS;
-            'DomainFQDN'          = $ConfigData.DomainFQDN;
-            'ProductKey'          = $ConfigData.ProductKey;
-        }
+    #fixing VLAN
+    $vNICs = Get-VMNetworkAdapter -VMName $ToR.ComputerName
 
-        New-SdnNestedVm @paramsToR
-
-        Start-VM $ToR.ComputerName
-
-        WaitLocalVMisBooted $ToR.ComputerName $credential
-
-        Invoke-Expression -Command `
-            "cmdkey /add:$($ToR.ComputerName) /user:Administrator /pass:$LocalAdminPassword" | Out-Null
-    }
-
-    #Checking is ToR is not already configured
-    $result = invoke-command  -VMName $ToR.ComputerName -Credential $credential { 
-                if ( Test-Path C:\ToR.txt){ $true   }
-                else { $false }
-            } 
-    if ( ! ( $result ) )
+    foreach( $vNIC in $vNICs)
     {
-        Write-SDNNestedLog "--> Tor Router : Staging $($ToR.ComputerName)"
-        New-ToRrouter $configdata.TORrouter.ComputerName $credential $ToR
-
-        #fixing VLAN
-        $vNICs = Get-VMNetworkAdapter -VMName $ToR.ComputerName
-
-        foreach( $vNIC in $vNICs)
-        {
-            foreach( $NIC in $ToR.NICs)
-            {  
-                foreach( $IPAddress in $vNIC.IPAddresses)
-                {
-                    if( $NIC.IPAddress  -match $IPAddress ){
-                        $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NIC.VlanID
-                    }
+        foreach( $NIC in $ToR.NICs)
+        {  
+            foreach( $IPAddress in $vNIC.IPAddresses)
+            {
+                if( $NIC.IPAddress  -match $IPAddress ){
+                    $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NIC.VlanID
                 }
             }
         }
-        Write-SDNNestedLog "--> Tor Router : Staging $($ToR.ComputerName) is done"
     }
-    else{Write-SDNNestedLog  "TOR router already configured - Skipping deployment" }
+    Write-SDNNestedLog "--> Tor Router : Staging $($ToR.ComputerName) is done"
 }
+else{Write-SDNNestedLog  "TOR router already configured - Skipping deployment" }
+
 
 Write-SDNNestedLog "############"
 Write-SDNNestedLog "########"
