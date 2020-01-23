@@ -188,15 +188,15 @@ foreach ( $dc in $configdata.DCs)
 
     if( ($dc.Nics).count -gt 1 )
     {
-        Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server binddins" 
+        Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings" 
 
         Invoke-Command -VMName $dc.computername -Credential $DomainJoinCredential {         
             $MgmtIp = (Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4).IPAddress
             #Removing DNS registration on 2nd adapter
             Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
             Get-NetAdapter "Ethernet 2" | Set-DnsClient -RegisterThisConnectionsAddress $false
-            ipconfig /registerdns
-            dnscmd /ResetListenAddresses $MgmtIp
+            ipconfig /registerdns | Out-Null
+            dnscmd /ResetListenAddresses $MgmtIp | Out-Null
             Restart-Service DNS
         }
     }
@@ -552,7 +552,7 @@ $result = invoke-command  -VMName $ToR.ComputerName -Credential $credential {
 if ( ! ( $result ) )
 {
     Write-SDNNestedLog "--> Tor Router : Staging $($ToR.ComputerName)"
-    New-ToRrouter $ToR.computername $credential $ToR
+    New-ToRrouter $ToR.ComputerName $credential $ToR
 
     #fixing VLAN
     $vNICs = Get-VMNetworkAdapter -VMName $ToR.ComputerName

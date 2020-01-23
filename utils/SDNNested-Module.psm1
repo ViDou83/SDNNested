@@ -422,7 +422,7 @@ function New-ToRRouter()
     param(
         [String] $VMName,
         [PSCredential] $credential,
-        [hashtable] $TORrouter
+        [array] $TORrouter
     )
 
     #Adding RRAS and BGP config
