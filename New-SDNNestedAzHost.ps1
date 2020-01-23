@@ -193,8 +193,7 @@ Write-SDNNestedLog  "Creating the AZ VM $VMName"
 # Creating VM
 $res = New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
 
-
-if ( ! $reS.StatusCode )
+if ( ! $reS.IsSuccessStatusCode )
 {
     Write-SDNNestedLog  "Creating the AZ VM $VMName failed !"
 }
@@ -225,14 +224,14 @@ else
 
     #while ( ! ( (tnc sdn01202019.francecentral.cloudapp.azure.com -p 3389).TcpTestSucceeded ) ){ sleep 1 }
 
-    New-Item -ItemType File -Path $env:temp\injectedscript.ps1
+    New-Item -ItemType File -Path $env:temp\injectedscript.ps1  | Out-Null
 
     $Content = "winrm qc /force
     netsh advfirewall firewall add rule name=WinRMHTTP dir=in action=allow protocol=TCP localport=5985
     netsh advfirewall firewall add rule name=WinRMHTTPS dir=in action=allow protocol=TCP localport=5986
     "
 
-    Add-Content $env:temp\injectedscript.ps1 $Content
+    Add-Content $env:temp\injectedscript.ps1 $Content  | Out-Null
     
     Write-SDNNestedLog  "AZ VM $VMName  Adding WinRM Firewall rules"
     Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroupName -VMName $VMName -ScriptPath $env:temp\injectedscript.ps1 `
@@ -269,8 +268,10 @@ else
         Write-Host "$VMName : virtual Disk succesfully created"
 
         $DriveLetter = $configdata.vDiskDriveLetter
+        $DriveLetternnocolon = $DriveLetter.replace(":","")
+
         $Partition = Get-VirtualDisk -FriendlyName $virtualDisk.FriendlyName | Get-Disk | Initialize-Disk -PassThru | `
-                        New-Partition -DriveLetter $DriveLetter.replace(":","") -UseMaximumSize 
+                        New-Partition -DriveLetter $DriveLetternnocolon -UseMaximumSize 
         
         if ( ! $partition )
         {
