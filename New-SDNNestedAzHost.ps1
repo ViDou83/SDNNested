@@ -319,7 +319,8 @@ else
             Write-Host "$VMName : Copying files, it could take a while"
 
             if ( Test-Path "Z:\Template") {
-                cp Z:\Template\*.vhdx "$($DriveLetter)\VMs\Template" 
+                #cp Z:\Template\*.vhdx "$($DriveLetter)\VMs\Template" 
+                Robocopy.exe Z:\Template "$($DriveLetter)\VMs\Template" /MT
             }
             else{
                 Write-Host "$VMName : Cannot get VHDX Template from $AZFileShare" 
@@ -327,7 +328,9 @@ else
             }
 
             if ( Test-Path "Z:\apps") {
-                cp Z:\apps C:\ -Recurse
+                #cp Z:\apps C:\ -Recurse
+                Robocopy.exe Z:\apps "$($DriveLetter)\apps"  /MT
+
             }
         }
         else
