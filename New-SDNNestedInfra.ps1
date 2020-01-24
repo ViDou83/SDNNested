@@ -502,7 +502,7 @@ Write-SDNNestedLog "########"
 Write-SDNNestedLog "############"
 
 #Creating ToR Router
-$credential = $LocalAdminCredentia
+$credential = $LocalAdminCredential
 $ToR = $configdata.TORrouter
 
 if ( $ToR.ComputerName -eq $configdata.DCs[0].computername )

@@ -8,7 +8,17 @@ Param(
 Import-Module -Name Az.Compute
 Import-Module -Name .\utils\SDNNested-Module.psm1
 
-$Connected = Get-AzSubscription -ErrorAction Continue -OutVariable null
+$res = get-module "Az.*" -ErrorAction SilentlyContinue
+if ( ! $res )
+{
+    Write-SDNNestedLog "Az Powershell Modules are missing, installation is on going !"    
+    Install-Module -Name Az -AllowClobber -Scope AllUsers -Force -confirm:$false
+    Write-SDNNestedLog "ReRun the script !!!!" 
+    sleep 10   
+    exit 0
+}
+
+$Connected = Get-AzSubscription -ErrorAction Continue -OutVariable null 
 if ( $Connected ) {
     "Already connected to the subscription"
 }
@@ -99,9 +109,10 @@ if ( ! $AzVirtualNetwork )
     Write-SDNNestedLog  "No VNET $VnetName found in $ResourceGroupName so going to create one"
     
     $SubnetName = Read-Host "SubnetName(ex:MySubnet)"
-    $VnetAddressPrefix = Read-Host "Prefix(ex:10.0.0.0/16)"
-    $SubnetAddressPrefix = Read-Host "Prefix(ex:10.0.0.0/24)"
-    $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -Name $SubnetName -AddressPrefix $SubnetAddressPrefix
+    $VnetAddressPrefix = Read-Host "VNet Prefix(ex:10.0.0.0/16) - Must be greater than Subnet prefix" 
+    $SubnetAddressPrefix = Read-Host "Subnet Prefix(ex:10.0.0.0/24) - - Must be lower than Subnet prefix"
+    $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -VirtualNetwork $AzVirtualNetwork -Name $SubnetName `
+        -AddressPrefix $SubnetAddressPrefix
 
     $AzVirtualNetwork = New-AzVirtualNetwork -Name $VnetName -ResourceGroupName $ResourceGroupName -Location $LocationName `
         -AddressPrefix $VnetAddressPrefix -Subnet $SingleSubnet
@@ -115,8 +126,8 @@ else
         Write-SDNNestedLog  "$SubnetName does not exist int $VnetName so creating one"
 
         $SubnetName = Read-Host "SubnetName(ex:MySubnet)"
-        $VnetAddressPrefix = Read-Host "Prefix(ex:10.0.0.0/16)"
-        $SubnetAddressPrefix = Read-Host "Prefix(ex:10.0.0.0/24)"
+        $VnetAddressPrefix = Read-Host "VNet Prefix(ex:10.0.0.0/16) - Must be greater than Subnet prefix" 
+        $SubnetAddressPrefix = Read-Host "Subnet Prefix(ex:10.0.0.0/24) - - Must be lower than Subnet prefix"
         $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -Name $SubnetName -AddressPrefix $SubnetAddressPrefix `
             -VirtualNetwork $AzVirtualNetwork
     }
@@ -124,18 +135,14 @@ else
 }
 
 # Checking Network Security Group
-$AzNetworkSecurityGroup = Get-AzNetworkSecurityGroup -ResourceName $configdata.NSGName `
-    -ResourceGroupName $ResourceGroupName 
+$NSGName = $configdata.NSGName
+
+$AzNetworkSecurityGroup = Get-AzNetworkSecurityGroup -ResourceName $NSGName -ResourceGroupName $ResourceGroupName 
 if ( ! $AzNetworkSecurityGroup )
 {
-    $NSGName = "NSG-AZ-SDNNested"
     Write-SDNNestedLog "$NSGName does not exist so creation one called $NSGName."
     $AzNetworkSecurityGroup = New-AzNetworkSecurityGroup -Name $NSGName -ResourceGroupName $ResourceGroupName `
                                 -Location $LocationName
-}
-else
-{
-    $NSGName = $configdata.NSGName
 }
 
 #Checking Network security rules

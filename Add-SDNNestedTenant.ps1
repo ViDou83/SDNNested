@@ -346,7 +346,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
             $TenantVM = $args[1]
             $cred = $args[2]
             
-            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested*\utils\SDNNested-Module.psm1 }
 
             New-SdnNestedVm @paramsTenant
 
@@ -411,7 +411,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
             $uri = $args[1]
             $cred = $args[2]
 
-            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+            if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested*\utils\SDNNested-Module.psm1 }
 
             #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
             $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
@@ -519,7 +519,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                     throw "FAILED: DEPLOYMENT STOPPED. $env:computername CANNOT ACCESS THE SHARE \\$LocalVMName\Template / $UNCprefix. Please map the drive again"
                 }
 
-                if ( ! (Get-Module SDNNested-Module ) ){ import-module $UNCprefix\SDNNested\utils\SDNNested-Module.psm1 }
+                if ( ! (Get-Module SDNNested-Module ) ){ import-module $UNCprefix\SDNNested*\utils\SDNNested-Module.psm1 }
 
                 $pssession = New-PSSession -VMName $TenantVM.Name -Credential $cred     
                 if ( $pssession )
@@ -588,7 +588,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 $TenantVM = $args[0]
                 $cred = $args[1]
 
-                if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested\utils\SDNNested-Module.psm1 }
+                if ( ! (Get-Module SDNNested-Module ) ){ import-module Z:\SDNNested*\utils\SDNNested-Module.psm1 }
 
                 Add-WindowsFeatureOnVM $TenantVM.Name $cred $TenantVM.Roles
 
@@ -709,7 +709,10 @@ try{
 if ($configdataInfra.VMHostPwd){
     $secpasswd = ConvertTo-SecureString $configdataInfra.VMHostPwd -AsPlainText -Force
     $AzCred = New-Object System.Management.Automation.PSCredential($configdataInfra.VMHostadmin,$secpasswd)
-}else{
+}
+else
+{
+    Write-SDNNestedLog "Please provide the credential of the AzureVM :"
     $AzCred = Get-Credential $configdataInfra.VMHostadmin
 }
 
