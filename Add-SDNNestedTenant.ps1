@@ -420,7 +420,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                                 
             $CurrentFeature = Get-VMSwitchExtensionPortFeature -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
 
-           Write-SDNNestedLog  "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
+            Write-SDNNestedLog  "Configuring SDNSwith Extension for $($TenantVM.Name) vNIC"
             
             $nic = Get-NetworkControllerNetworkInterface -ResourceID "$($TenantVM.Name)_VMNIC0" -ConnectionUri $uri 
             
@@ -699,6 +699,14 @@ foreach ($vip in $configdata.SlbVIPs)
     }
 }
 
+Write-SDNNestedLog "############"
+Write-SDNNestedLog "########"
+Write-SDNNestedLog "####"
+Write-SDNNestedLog "### Configuring external TENANTs GWs"
+Write-SDNNestedLog "####"
+Write-SDNNestedLog "########"
+Write-SDNNestedLog "############"
+
 #Fixing GRE and BGP peering on Tenants "physical" gateways
 winrm set winrm/config/client '@{TrustedHosts="*"}' | Out-Null
 
@@ -718,6 +726,7 @@ else
 
 $LocalVMName = (get-item "HKLM:\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters").GetValue("HostName")
 
+Write-SDNNestedLog  "Checing if external tenants GWs are UP!"
 #checking that Tenant remote GWs are running
 Invoke-Command  -Computername $LocalVMName -Credential $AzCred { 
     $VMs = $args[0]
@@ -758,9 +767,16 @@ foreach( $Tenant in $configdata.Tenants)
                 $GreDestination=$args[2]
                 Invoke-Command  -VMName $PhysicalGwVMName -Credential $cred {
                     $GreDestination=$args[0]
+                    if ( (Get-Service RemoteAccess).Status -ne "Running")
+                    {
+                        Start-Service RemoteAccess -ErrorAction SilentlyContinue
+                        sleep 20
+                    }
+                    sleep 10
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $false -force
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -Destination $GreDestination
                     Get-VpnS2SInterface | Set-VpnS2SInterface -GreTunnel -AdminStatus $true
+                    
                 } -ArgumentList $GreDestination
 
             } -ArgumentList $LocalAdminCredential, $PhysicalGwVMName, $GreDestination
@@ -779,6 +795,14 @@ foreach( $Tenant in $configdata.Tenants)
 
             Invoke-Command -VMName $PhysicalGwVMName -Credential $cred {
                 $BgpPeer=$args[0]
+
+                if ( (Get-Service RemoteAccess).Status -ne "Running")
+                {
+                    Start-Service RemoteAccess -ErrorAction SilentlyContinue
+                    sleep 20
+                }
+                sleep 10
+                
                 Get-BgpPeer | Set-BgpPeer -PeerIpAddress $BgpPeer -force
                 $LocalBgpIP = (Get-BgpPeer).LocalIPAddress
                 
