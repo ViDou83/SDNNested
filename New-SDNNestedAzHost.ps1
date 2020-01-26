@@ -45,19 +45,8 @@ if ($Configdata.ScriptVersion -ne $scriptversion) {
     return
 }
 
+#DNS ForbiddendChar
 $ForbiddenChar = @("-", "_", "\", "/", "@", "<", ">", "#" , "&")
-
-# Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
-if( ! $configdata.VMLocalAdminUser )
-{
-    $Credential = Get-Credential -Message "Please provide the AzureVM credential"
-}
-else
-{
-    $VMLocalAdminUser = $configdata.VMLocalAdminUser
-    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword -AsPlainText -Force 
-    $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
-}
 
 # Checking VM Name 
 if( $null -eq $VMName ){ $VMName = $configdata.VMName }
@@ -76,7 +65,6 @@ if ( ! ( $AzResourceGroupName ) )
     $list = Get-AzResourceGroup | select-object ResourceGroupName,Location
     Write-SDNNestedLog "See existing resource group"
     $list | ft
-    sleep 10
     throw "$ResourceGroupName does not exist on your subscription. Please create it First."
 }
 else
@@ -84,8 +72,9 @@ else
     $LocationName = $AzResourceGroupName.Location
 }
 
+
 # Checking that VMSize is available
-$AzVMSize = Get-AzVMSize -Location $LocationName | ? Name -eq $configdata.VMSize
+$AzVMSize = Get-AzVMSize -Location $LocationName | ? Name -eq $configdata.VMSize 
 if ( ! $AzVMSize )
 {
     Write-SDNNestedLog "Please see current VMsize available in $LocationName"
@@ -105,42 +94,36 @@ $VMSize = $AzVMSize.Name
 $VnetName = $configdata.VnetName
 $SubnetName = $configdata.SubnetName
 $storageType = $configdata.storageType
+$VnetAddressPrefix = $configdata.VnetAddressPrefix
+$SubnetAddressPrefix = $configdata.SubnetAddressPrefix
 
-$AzVirtualNetwork = Get-AzVirtualNetwork -Name $VnetName -ResourceGroupName $ResourceGroupName
+$AzVirtualNetwork = Get-AzVirtualNetwork -Name $VnetName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 if ( ! $AzVirtualNetwork ) 
 {
     Write-SDNNestedLog  "No VNET $VnetName found in $ResourceGroupName so going to create one"
-    
-    $SubnetName = Read-Host "SubnetName(ex:MySubnet)"
-    $VnetAddressPrefix = Read-Host "VNet Prefix(ex:10.0.0.0/16) - Must be greater than Subnet prefix" 
-    $SubnetAddressPrefix = Read-Host "Subnet Prefix(ex:10.0.0.0/24) - - Must be lower than Subnet prefix"
-    $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -VirtualNetwork $AzVirtualNetwork -Name $SubnetName `
-        -AddressPrefix $SubnetAddressPrefix
+   
+    $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -Name $SubnetName -AddressPrefix $SubnetAddressPrefix
 
     $AzVirtualNetwork = New-AzVirtualNetwork -Name $VnetName -ResourceGroupName $ResourceGroupName -Location $LocationName `
-        -AddressPrefix $VnetAddressPrefix -Subnet $SingleSubnet
+        -AddressPrefix $VnetAddressPrefix -Subnet $AzVNetSubnet
 }
 else
 {
-    $AzVNetSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $AzVirtualNetwork `
-                        -Name $SubnetName
+    $AzVNetSubnet = Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $AzVirtualNetwork -Name $SubnetName -ErrorAction SilentlyContinue
     if ( ! $AzVNetSubnet )
     {
-        Write-SDNNestedLog  "$SubnetName does not exist int $VnetName so creating one"
-
-        $SubnetName = Read-Host "SubnetName(ex:MySubnet)"
-        $VnetAddressPrefix = Read-Host "VNet Prefix(ex:10.0.0.0/16) - Must be greater than Subnet prefix" 
-        $SubnetAddressPrefix = Read-Host "Subnet Prefix(ex:10.0.0.0/24) - - Must be lower than Subnet prefix"
-        $AzVNetSubnet = New-AzVirtualNetworkSubnetConfig -Name $SubnetName -AddressPrefix $SubnetAddressPrefix `
-            -VirtualNetwork $AzVirtualNetwork
+        Write-SDNNestedLog  "$SubnetName does not exist int $VnetName - please ResourceGroupName and VNet consistency"
+        throw "$SubnetName does not exist int $VnetName - please ResourceGroupName and VNet consistency"
     }
-    Write-SDNNestedLog  "$VMName will be connect to $VnetName / subnet $SubnetName"
 }
 
+$AzVNetSubnet = $AzVirtualNetwork.Subnets[0]
+
+Write-SDNNestedLog  "$VMName will be connect to $VnetName / subnet $SubnetName"
 # Checking Network Security Group
 $NSGName = $configdata.NSGName
 
-$AzNetworkSecurityGroup = Get-AzNetworkSecurityGroup -ResourceName $NSGName -ResourceGroupName $ResourceGroupName 
+$AzNetworkSecurityGroup = Get-AzNetworkSecurityGroup -ResourceName $NSGName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue
 if ( ! $AzNetworkSecurityGroup )
 {
     Write-SDNNestedLog "$NSGName does not exist so creation one called $NSGName."
@@ -154,14 +137,14 @@ if ( !( $AzNetworkSecurityGroup.SecurityRules | ? destinationPortRange -eq "3389
 {
     $AzNetworkSecurityGroup | Add-AzNetworkSecurityRuleConfig -Name "Rdp-Rule" -Description "Allow WinRM" -Access "Allow" `
         -Protocol "Tcp" -Direction "Inbound" -Priority 100 -SourceAddressPrefix "Internet" -SourcePortRange "*" `
-        -DestinationAddressPrefix "*" -DestinationPortRange "3389" | Set-AzNetworkSecurityGroup
+        -DestinationAddressPrefix "*" -DestinationPortRange "3389" | Set-AzNetworkSecurityGroup | Out-Null 
 }
 
 if ( !( $AzNetworkSecurityGroup.SecurityRules | ? destinationPortRange -eq "5985-5986")  ) 
 {
     $AzNetworkSecurityGroup | Add-AzNetworkSecurityRuleConfig -Name "WinRM-Rule" -Description "Allow WinRM" -Access "Allow" `
         -Protocol "Tcp" -Direction "Inbound" -Priority 150 -SourceAddressPrefix "Internet" -SourcePortRange "*" `
-        -DestinationAddressPrefix "*" -DestinationPortRange "5985-5986" | Set-AzNetworkSecurityGroup
+        -DestinationAddressPrefix "*" -DestinationPortRange "5985-5986" | Set-AzNetworkSecurityGroup | Out-Null
 }
 
 #Public IP address and FQDN
@@ -189,7 +172,19 @@ if ( ! $AzNetworkInterface )
     throw "Failed to create $NICName"
 }
 
-#Preparing VMConfig
+
+# Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
+if( ! $configdata.VMLocalAdminUser )
+{
+    $Credential = Get-Credential -Message "Please provide the AzureVM credential"
+}
+else
+{
+    $VMLocalAdminUser = $configdata.VMLocalAdminUser
+    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword -AsPlainText -Force 
+    $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
+}
+
 $AzVM = New-AzVMConfig -VMName $VMName -VMSize $VMSize
 $AzVM = Set-AzVMOperatingSystem -VM $AzVM -Windows -ComputerName $VMName -Credential $Credential -ProvisionVMAgent `
     -EnableAutoUpdate
@@ -199,6 +194,7 @@ $AzVM = Add-AzVMNetworkInterface -VM $AzVM -Id $AzNetworkInterface.Id
 $AzVM = Set-AzVMOSDisk -StorageAccountType $storageType -VM $AzVM -CreateOption "FromImage"
 
 Write-SDNNestedLog  "Creating the AZ VM $VMName"
+
 # Creating VM
 $res = New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
 

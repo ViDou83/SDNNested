@@ -13,17 +13,20 @@
     #VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
 
     # Azure Account information
+    #YOU HAVE TO CREATE A RESOURCE GROUP NAME FISRT to have it mapped to location close to you
+    ResourceGroupName           = "RG-AZ-SDNNested"
     # recommendation would be to create it from portal 1st otherwise, you will be prompted
-    ResourceGroupName           = "RG-AZ-FRANCE"
-    VnetName                    = "VNET1-AZ-FRANCE"
-    SubnetName                  = "AzFranceSubnet"
-    
+    VnetName                    = "VNET-SDNNested"
+    SubnetName                  = "Subnet-SDNNested"
+    VnetAddressPrefix           = "10.10.10.0/24"
+    SubnetAddressPrefix         = "10.10.10.0/25"
+
     #subscription                = "Microsoft Azure Internal Consumption"
     #Azure StorageType
     storageType                 = 'StandardSSD_LRS'
 
     #Network Security Group where the VM will get (RDP and RemoteWinRM will be allowed!!!!)
-    NSGName                     = "NSG-AZ-FRANCE" 
+    NSGName                     = "NSG-AZ-SDNNested" 
 
     # Azure VM Disk number and size 
     # Below 8 Disks with 128GB will be aggregated to one vDISK of 1TB
@@ -44,7 +47,4 @@
     #AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
     #AZFileUser                  = "Azure\myuser"
     #AZFilePwd                   = "MyVeryComplexPassword"
-    AZFileShare                 = "\\rgazfrancediag.file.core.windows.net\sndtemplate"
-    AZFileUser                  = "Azure\rgazfrancediag"
-    AZFilePwd                   = "U6PEMjWhJ3D0eZb1EfINfTsk4hUsUF30Wg0yVJb+ezA9KUgQBjv8VWoju2UfQQqi4WB7lGzYA3BAzZlAbs/weQ=="
 }
