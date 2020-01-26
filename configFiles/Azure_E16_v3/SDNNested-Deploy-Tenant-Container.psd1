@@ -3,11 +3,11 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
-    VMLocation           = "C:\ClusterStorage\S2D_CSV1\VMs"
+    VMLocation           = "D:\VMs"
 
     ConfigFileName       = "Azure_E16_v3"
 
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
 
     VMMemory             = 2GB
     VMProcessorCount     = 2
