@@ -197,7 +197,7 @@ Write-SDNNestedLog  "Creating the AZ VM $VMName"
 
 # Creating VM
 $res = New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
-
+$res
 if ( ! $reS.IsSuccessStatusCode )
 {
     Write-SDNNestedLog  "Creating the AZ VM $VMName failed !"
@@ -306,11 +306,11 @@ netsh advfirewall firewall add rule name=WinRMHTTPS dir=in action=allow protocol
         Write-Host "$VMName : Creating folder for VMs Storage"
 
         if (! (Test-Path "$($DriveLetter)\VMs") ) { 
-            mkdir "$($DriveLetter)\VMs" | Out-File
-            mkdir "$($DriveLetter)\VMs\Template" | Out-File
+            New-Item -ItemType Directory "$($DriveLetter)\VMs" | Out-Null
+            New-Item -ItemType Directory "$($DriveLetter)\VMs\Template" | Out-Null
         }
         if (! (Test-Path "$($DriveLetter)\VMs\Template") ) { 
-            mkdir "$($DriveLetter)\VMs\Template" | Out-File
+            New-Item -ItemType Directory "$($DriveLetter)\VMs\Template" | Out-Null
         }
 
         
@@ -326,29 +326,20 @@ netsh advfirewall firewall add rule name=WinRMHTTPS dir=in action=allow protocol
             $Credential = New-Object System.Management.Automation.PSCredential ($AZFileUser, $AZFileSecurePassword) 
             #cmdkey /add:$AzFQDN /user:$AZFileUser /pass:$AZFilePwd
             #net use Z: $AzFileShare /user:$AZFileUser $AZFilePwd /persistent:yes
-            New-SmbGlobalMapping -LocalPath Z: -RemotePath $AzFileShare `
-                -Credential $Credential -Persistent $true
+            New-SmbGlobalMapping -LocalPath Z: -RemotePath $AzFileShare -Credential $Credential -Persistent $true
 
             Write-Host "$VMName : Copying files, it could take a while"
 
-            if ( Test-Path "Z:\Template") {
+            if ( Test-Path $DriveLetter) 
+            {
                 #cp Z:\Template\*.vhdx "$($DriveLetter)\VMs\Template" 
-                Robocopy.exe Z:\Template "$($DriveLetter)\VMs\Template" /MT /np | Out-Null	
-            }
-            else{
-                Write-Host "$VMName : Cannot get VHDX Template from $AZFileShare" 
-                Write-Host "$VMName : You need to place it manually to $($DriveLetter)\VMs\Template"
-            }
-
-            if ( Test-Path "Z:\apps") {
-                #cp Z:\apps C:\ -Recurse
-                Robocopy.exe Z:\apps "$($DriveLetter)\apps"  /MT /np | Out-Null	
-
+                Robocopy.exe Z:\Template "$($DriveLetter)\VMs\Template" /MT /np
+                Robocopy.exe Z:\apps "$($DriveLetter)\apps"  /MT /np
             }
         }
         else
         {
-            Write-Host "$VMName : Please thing to copy VHDX Template to $DriveLetter" 
+            Write-Host "$VMName : THINK to copy VHDX Template to $DriveLetter" 
         }
         Write-Host "$VMName : Installing HYPV feature" 
         Install-WindowsFeature -Name Hyper-V -IncludeManagementTools -Restart
