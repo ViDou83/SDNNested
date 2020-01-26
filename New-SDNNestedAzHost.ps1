@@ -70,10 +70,13 @@ if( ! $VMName )
 
 # Checking ResourceGroupName is existing and getting the Az locaiton from it
 $ResourceGroupName = $configdata.ResourceGroupName
-$AzResourceGroupName = Get-AzResourceGroup -Name $ResourceGroupName
+$AzResourceGroupName = Get-AzResourceGroup -Name $ResourceGroupName -ErrorAction SilentlyContinue
 if ( ! ( $AzResourceGroupName ) )
 {
-    Get-AzResourceGroup | select-object ResourceGroupName,Location
+    $list = Get-AzResourceGroup | select-object ResourceGroupName,Location
+    Write-SDNNestedLog "See existing resource group"
+    $list | ft
+    sleep 10
     throw "$ResourceGroupName does not exist on your subscription. Please create it First."
 }
 else
@@ -196,7 +199,6 @@ $AzVM = Add-AzVMNetworkInterface -VM $AzVM -Id $AzNetworkInterface.Id
 $AzVM = Set-AzVMOSDisk -StorageAccountType $storageType -VM $AzVM -CreateOption "FromImage"
 
 Write-SDNNestedLog  "Creating the AZ VM $VMName"
-
 # Creating VM
 $res = New-AzVm -ResourceGroupName $ResourceGroupName -Location $LocationName -VM $AzVM -LicenseType "Windows_Server" -Verbose    
 
@@ -207,6 +209,11 @@ if ( ! $reS.IsSuccessStatusCode )
 else
 {
     Write-SDNNestedLog  "AZ VM $VMName successfully created"
+
+    #Auto shutdown to save money
+    $TimeZone = (Get-TimeZone).StandardName
+    Write-SDNNestedLog  "Creating daily 8pm $TimeZone Auto shutdow for $VMName "
+    Enable-AzRmVMAutoShutdown -ResourceGroupName $ResourceGroupName -VirtualMachineName $VMName -ShutdownTime 2000 -timezone $TimeZone
 
     $AzVM = get-AzVm -VMName $VMName
     $AzVM | Stop-AzVM -Force
