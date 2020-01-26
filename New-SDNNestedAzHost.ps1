@@ -56,6 +56,17 @@ if( ! $VMName )
     throw "Please provide a VMName either from inline parameters or using ConfigFile"
 }
 
+# Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
+if( ! $configdata.VMLocalAdminUser )
+{
+    $Credential = Get-Credential -Message "Please provide the AzureVM credential"
+}
+else
+{
+    $VMLocalAdminUser = $configdata.VMLocalAdminUser
+    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword -AsPlainText -Force 
+    $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
+}
 
 # Checking ResourceGroupName is existing and getting the Az locaiton from it
 $ResourceGroupName = $configdata.ResourceGroupName
@@ -170,19 +181,6 @@ $AzNetworkInterface = New-AzNetworkInterface -Name $NICName -ResourceGroupName $
 if ( ! $AzNetworkInterface )
 { 
     throw "Failed to create $NICName"
-}
-
-
-# Credentials for Local Admin account you created in the sysprepped (generalized) vhd image
-if( ! $configdata.VMLocalAdminUser )
-{
-    $Credential = Get-Credential -Message "Please provide the AzureVM credential"
-}
-else
-{
-    $VMLocalAdminUser = $configdata.VMLocalAdminUser
-    $VMLocalAdminSecurePassword = ConvertTo-SecureString $configdata.VMLocalAdminSecurePassword -AsPlainText -Force 
-    $Credential = New-Object System.Management.Automation.PSCredential ($VMLocalAdminUser, $VMLocalAdminSecurePassword) 
 }
 
 $AzVM = New-AzVMConfig -VMName $VMName -VMSize $VMSize
