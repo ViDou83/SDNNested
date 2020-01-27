@@ -525,7 +525,7 @@ foreach ($TenantVM in $configdata.TenantVMs)
                 if ( $pssession )
                 {
                     Write-SDNNestedLog "Sync needed scripts to ContainerHost $($TenantVM.Name)"
-                    copy-item -ToSession $pssession -Destination C:\temp -Path $UNCprefix\SDNNested\utils\Container\ -Recurse -force
+                    copy-item -ToSession $pssession -Destination C:\temp -Path $UNCprefix\SDNNested*\utils\Container\ -Recurse -force
                 }
                 else
                 {
