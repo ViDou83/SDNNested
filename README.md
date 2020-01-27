@@ -3,7 +3,7 @@ SDNNested is a collection of Powershell Scrits that help to automate the deploym
 
 https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
  
-![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram.jpg?raw=true)
+![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/diagram_new.jpg?raw=true)
 ![image](https://github.com/ViDou83/SDNNested/blob/master/utils/pictures/legende.jpg?raw=true)
 
 # General requirement
