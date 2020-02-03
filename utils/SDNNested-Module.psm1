@@ -414,13 +414,15 @@ function New-SdnNestedVm() {
 
     Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
     
+    $KeyboardLayout = (Get-WinSystemLocale).Name
+
     $params = @{
         'VHD'                = "$CurrentVMLocationPath\$VHDName";
         'ProductKey'         = $ProductKey;
         'IpGwAddr'           = $IpGwAddr;
         'DomainJoin'         = $JoinDomain;
         'ComputerName'       = $VMName;
-        'KeyboardLayout'     = 'fr-fr';
+        'KeyboardLayout'     = $KeyboardLayout;
         'DomainFDQN'         = $DomainFQDN;
         'CredentialDomain'   = $CredentialDomain;
         'CredentialPassword' = $CredentialPassword;
@@ -428,6 +430,8 @@ function New-SdnNestedVm() {
         'LocalAdminPassword' = $LocalAdminPassword;
         'NICS'               = $Nics;
     }
+
+    Get-WinSystemLocale
 
     #Preparing Unatting process => building unattend.xml file
     Add-UnattendFileToVHD @params
