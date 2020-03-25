@@ -3,7 +3,7 @@
     ScriptVersion               = "2.0"
 
     # Azure VM size 
-    VMSize                     = "Standard_E8_v3"
+    VMSize                     = "Standard_E16_v3"
 
     #Below define the Azure VMName, you can use the script cmd line to define it as well
     #VMName                      = "SDN-011820"
@@ -13,20 +13,17 @@
     #VMLocalAdminSecurePassword  = "MyVeryComplexPassword" 
 
     # Azure Account information
-    #YOU HAVE TO CREATE A RESOURCE GROUP NAME FISRT to have it mapped to location close to you
-    ResourceGroupName           = "RG-AZ-SDNNested"
     # recommendation would be to create it from portal 1st otherwise, you will be prompted
-    VnetName                    = "VNET-SDNNested"
-    SubnetName                  = "Subnet-SDNNested"
-    VnetAddressPrefix           = "10.10.10.0/24"
-    SubnetAddressPrefix         = "10.10.10.0/25"
-
+    ResourceGroupName           = "RG-AZ-FRANCE"
+    VnetName                    = "VNET1-AZ-FRANCE"
+    SubnetName                  = "AzFranceSubnet"
+    
     #subscription                = "Microsoft Azure Internal Consumption"
     #Azure StorageType
     storageType                 = 'StandardSSD_LRS'
 
     #Network Security Group where the VM will get (RDP and RemoteWinRM will be allowed!!!!)
-    NSGName                     = "NSG-AZ-SDNNested" 
+    NSGName                     = "NSG-AZ-FRANCE" 
 
     # Azure VM Disk number and size 
     # Below 8 Disks with 128GB will be aggregated to one vDISK of 1TB
@@ -47,6 +44,4 @@
     #AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
     #AZFileUser                  = "Azure\myuser"
     #AZFilePwd                   = "MyVeryComplexPassword"
-    AZFileShare                 = "\\rgazfrancediag.file.core.windows.net\sndtemplate"
-    AZFileUser                  = "Azure\rgazfrancediag"
 }

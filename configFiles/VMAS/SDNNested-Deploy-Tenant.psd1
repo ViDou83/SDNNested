@@ -3,11 +3,12 @@
 
     VHDPath              = "Z:"
     VHDFile              = "Win2019-Core.vhdx"
+    #Where Tenants VMs will be stored, generally same than the SDNExpressConfig
     VMLocation           = "D:\VMs"
-    
-    ConfigFileName       = "Azure_E16_v3"
+    #Has to match with the folder name 
+    ConfigFileName       = "VMAS"
 
-    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
+    ProductKey           = ''
 
     VMMemory             = 2GB
     VMProcessorCount     = 2
@@ -18,7 +19,9 @@
     DomainJoinUserName   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
 
-    RestURI = "https://NORTHBOUNDAPI.SDN.LAB"
+    ManagementDNS = "10.184.108.1"
+
+    RestURI = "https://NCNORTHBOUND.SDN.LAB"
 
     Tenants              = 
     @(
@@ -59,25 +62,6 @@
                     }
             )
             DomainFQDN                        = ""
-        },
-        @{
-            Name                              = "Acme";
-            TenantVirtualNetworkName          = "VNET-Tenant-Acme"
-            TenantVirtualNetworkAddressPrefix = @("172.16.0.0/16") 
-            PhysicalGwVMName                  = 'ACME-GW01'
-            
-            TenantVirtualSubnets              = 
-            @( 
-                    @{      
-                        Name    =  "VSUBNET-Tenant-Acme-WebTier";
-                        AddressPrefix = "172.16.1.0/24"
-                    },
-                    @{      
-                        Name    =  "VSUBNET-Tenant-Acme-vGW";
-                        AddressPrefix = "172.16.255.0/24"
-                    }
-            )
-            DomainFQDN                        = ""
         }
     )
 
@@ -106,6 +90,23 @@
             BgpPeerAsNumber             = 64521   
             BgpPeerExtAsNumber          = "0.64521"   
         },
+        <#@{
+            Tenant              = "Fabrikam"
+            Capacity            = 10000 #In KBytes/s
+            Type                = 'GRE'
+            VirtualGwName       = 'Fabrikam_vGW'
+            RouteDstPrefix      = @( "172.16.254.0/24", "2.2.2.2/32" )
+            PSK                 = "1234"
+            GrePeer             = "1.1.1.1"
+            #BGP Router properties  
+            BGPEnabled          = $true
+            BgpLocalExtAsNumber = "0.64512"   
+            BgpLocalBRouterId   = ""   
+            BgpLocalRouterIP    = @()
+            BgpPeerIpAddress    = "2.2.2.2"   
+            BgpPeerAsNumber     = 64521   
+            BgpPeerExtAsNumber  = "0.64521"   
+        },#>
         @{
             Tenant              = "Fabrikam"
             Capacity            = 10000 #In KBytes/s   
@@ -123,26 +124,8 @@
             BgpPeerIpAddress    = "4.4.4.4"   
             BgpPeerAsNumber     = 64521   
             BgpPeerExtAsNumber  = "0.64521"
-        },
-        @{
-            Tenant              = "Acme"
-            Capacity            = 10000 #In KBytes/s
-            Type                = 'GRE'
-            VirtualGwName       = 'Acme_vGW'
-            RouteDstPrefix      = @( "10.16.254.0/24", "6.6.6.6/32" )
-            PSK                 = "1234"
-            GrePeer             = "5.5.5.5"
-            #BGP Router properties  
-            BGPEnabled          = $true
-            BgpLocalExtAsNumber = "0.64512"   
-            BgpLocalBRouterId   = ""   
-            BgpLocalRouterIP    = @()
-            BgpPeerIpAddress    = "6.6.6.6"   
-            BgpPeerAsNumber     = 64521   
-            BgpPeerExtAsNumber  = "0.64521"   
         }
     )
-    
 
     TenantVMs            = 
     @(
@@ -197,35 +180,10 @@
                     DNS = @() ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
-        },
-        @{
-            HypvHostname = "SDN-HOST02.SDN.LAB"
-            Tenant       = "Acme"
-            Name         = 'Acme-VM01'
-            roles        = @("Web-Server", "Web-Mgmt-Service")   
-            Subnet       =  "VSUBNET-Tenant-Acme-WebTier";
-            NICs         = @( 
-                @{ 
-                    Name = "Acme-NetAdapter"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
-                    DNS = @() ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                };
-            )
-        },
-        @{
-            HypvHostname = "SDN-HOST01.SDN.LAB"
-            Tenant       = "Acme"            
-            Name         = 'Acme-VM02'
-            roles        = @("Web-Server", "Web-Mgmt-Service")            
-            Subnet       =  "VSUBNET-Tenant-Acme-WebTier";
-            NICs         = @( 
-                @{ 
-                    Name = "Acme-NetAdapter"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                    DNS = @() ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
-                };
-            )   
         }
     )
-
+    
+    #SLB configuration
     SlbVIPs                 =
     @(
         @{
@@ -247,16 +205,6 @@
             BackendPort         = 80
             Protocol            = "TCP"
             TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
-        },
-        @{
-            Tenant              = "Acme"
-            Name                = 'Acme-WebRainbow'
-            VIP                 = "41.40.40.10"
-            VIPAllocationMethod = "static" 
-            FrontendPort        = 80
-            BackendPort         = 80
-            Protocol            = "TCP"
-            TenantVMs           = @("Acme-VM01", "Acme-VM02")  
         }
     )
 
@@ -274,14 +222,8 @@
             Name                = 'OutboundNAT'
             VIPAllocationMethod = "static" 
             VIP                 = "41.40.40.19"
-            TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")  
-        },
-        @{
-            Tenant              = "Acme"
-            Name                = 'OutboundNAT'
-            VIPAllocationMethod = "static" 
-            VIP                 = "41.40.40.20"
-            TenantVMs           = @("Acme-VM01", "Acme-VM02")  
+            TenantVMs           = @("Fabrikam-VM01", "Fabrikam-VM02")     
         }
-    )    
+    )
+    
 }

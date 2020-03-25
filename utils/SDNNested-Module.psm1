@@ -368,7 +368,8 @@ Function Enable-AzRmVMAutoShutdown
 }
 
 ######
-function New-SdnNestedVm() {
+function New-SdnNestedVm() 
+{
     param(
         [String] $VMLocation,
         [String] $VMName,
@@ -414,8 +415,6 @@ function New-SdnNestedVm() {
 
     Copy-Item -Path $VHDTemplateFile -Destination $CurrentVMLocationPath -Recurse -Force | Out-Null
     
-    $KeyboardLayout = (Get-WinSystemLocale).Name
-
     $params = @{
         'VHD'                = "$CurrentVMLocationPath\$VHDName";
         'ProductKey'         = $ProductKey;
@@ -430,8 +429,6 @@ function New-SdnNestedVm() {
         'LocalAdminPassword' = $LocalAdminPassword;
         'NICS'               = $Nics;
     }
-
-    Get-WinSystemLocale
 
     #Preparing Unatting process => building unattend.xml file
     Add-UnattendFileToVHD @params
@@ -465,6 +462,7 @@ function New-ToRRouter()
         [PSCredential] $credential,
         [array] $TORrouter
     )
+    Write-SDNNestedLog "--> Tor Router : Staging $VMName"
 
     #Adding RRAS and BGP config
     Add-WindowsFeatureOnVM $VMName $credential RemoteAccess
@@ -493,28 +491,38 @@ function New-ToRRouter()
 
             if ( $ifIndex ){
                 Write-Host  "Adding Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
-                New-NetRoute -DestinationPrefix $route.Route -NextHop $route.NextHop -ifIndex $ifIndex
+                New-NetRoute -DestinationPrefix $route.Route -NextHop $route.NextHop -ifIndex $ifIndex | Out-Null
             }
             else { 
                Write-Host  "ERROR: Failded to add Static route Dst=$($route.Route) NextHop=$($route.NextHop) ifIndex=$ifIndex"
             }
         }
-        add-content C:\ToR.txt ""
-    } -ArgumentList $TORrouter
 
+        if ( $TORrouter.InternetNAT )
+        {
+            $In=(Get-NetAdapter | Get-NetIpAddress | ? IpAddress -match $TORrouter.InsideNAT).InterfaceAlias
+            $Out=(Get-NetAdapter | Get-NetIpAddress | ? IpAddress -match $TORrouter.OutsideNAT).InterfaceAlias
+            Write-Host  "Configuring NAT for Internet access on ToR Router"
+            netsh routing ip nat install
+            netsh routing ip nat  add int $in Private
+            netsh routing ip nat  add int $out Full
+        }
+
+        add-content C:\ToR.txt ""        
+    } -ArgumentList $TORrouter
+    Write-SDNNestedLog "<-- Tor Router : Staging $VMName is done"
 }
 
 function Add-vNicIpConfig(){
-    
     param(
-        [psobject] $vNIC,
-        [hashtable] $NetConfig
+        [hashtable] $vNIC
     )
 
     $NetAdapter = Get-NetAdapter | ? Name -Match $vNIC.Name
 
-    $IpAddr = $NetConfig.IpAddress.split("/")[0]
-    $PrefixLength = $NetConfig.IpAddress.split("/")[1]
+    $IpAddr         = $vNIC.IpAddress.split("/")[0]
+    $PrefixLength   = $vNIC.IpAddress.split("/")[1]
+    $DNS            = $vNIC.DNS
 
     if( $NetAdapter )
     {
@@ -523,8 +531,8 @@ function Add-vNicIpConfig(){
         {
             Write-Host "Configure Ip address/mask=$IpAddr/$PrefixLength Adapter=$($NetAdapter.Name) Host=$env:COMPUTERNAME"
             $NetAdapter | New-NetIPAddress -AddressFamily IPv4 -IPAddress $IpAddr -PrefixLength $PrefixLength | Out-Null
-            Write-Host "Configure DNS $($NetConfig.DNS) NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
-            $NetAdapter | Set-DnsClientServerAddress -ServerAddresses $NetConfig.DNS
+            Write-Host "Configure DNS $DNS NetAdapter:$($NetAdapter.Name) Host=$env:COMPUTERNAME"
+            $NetAdapter | Set-DnsClientServerAddress -ServerAddresses $DNS
         }
         else
         {
@@ -532,53 +540,62 @@ function Add-vNicIpConfig(){
         }
     }
     else {Write-SDNNestedLog  "ERROR: Failed to configure IpConfig and DNS vNIC=$($vNIC.Name) Host=$env:COMPUTERNAME" }
-
-    Write-SDNNestedLog  "Configuring VLAN vNic=$($vNIC.Name) VLANID=$($NetConfig.VLANID) Host=$env:COMPUTERNAME"
-    $vNIC | Set-VMNetworkAdapterVlan -Access -VlanId $NetConfig.VLANID
-
 }
 function Connect-HostToSDN()
 {
     param(
-        [array] $NICs,
-        [String] $VMswitch,
-        [hashtable] $NetRoute
+        [array] $vNICs
     )
 
-    foreach($NIC in $NICs)
+    foreach($vNIC in $vNICs)
     {
 
-        if ( !(  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch -ErrorAction SilentlyContinue ) )
+        if ( !(  Get-VMNetworkAdapter -ManagementOS -Name $vNIC.Name -SwitchName $vNIC.SwitchName -ErrorAction SilentlyContinue ) )
         {
-            Write-SDNNestedLog  "Adding vNIC=$($NIC.Name) on Host=$env:COMPUTERNAME"
-            Add-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch 
+            Write-SDNNestedLog  "Adding vNIC=$($vNIC.Name) on Switch=$($vNIC.SwitchName) Host=$env:COMPUTERNAME"
+            Add-VMNetworkAdapter -ManagementOS -Name $vNIC.Name -SwitchName $vNIC.SwitchName 
         }
-        while ( !( Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch -ErrorAction Ignore)){ sleep 1}
+        while ( !( Get-VMNetworkAdapter -ManagementOS -Name $vNIC.Name -SwitchName  $vNIC.SwitchName -ErrorAction Ignore)){ sleep 1}
         
-        $vNIC =  Get-VMNetworkAdapter -ManagementOS -Name $NIC.Name -SwitchName $VMswitch
         Write-SDNNestedLog "Enabling Ethernet Jumbo Frames"
-        Get-NetAdapter -Name "*$($vNIC.Name)*" | Get-NetAdapterAdvancedProperty | ? RegistryKeyword -EQ "*JumboPacket" | Set-NetAdapterAdvancedProperty -RegistryValue 9014
-        if( $vNIC ) 
-        { 
-            Add-vNicIpConfig $vNIC $NIC
-        }
+        Get-NetAdapter -Name "*$($vNIC.Name)*" | Get-NetAdapterAdvancedProperty | ? RegistryKeyword -EQ "*JumboPacket" | `
+            Set-NetAdapterAdvancedProperty -RegistryValue 9014
+        #Configure IpConfig
+        Add-vNicIpConfig $vNIC
+        #VLAN
+        Write-SDNNestedLog "VLAN: Configuring $($vNIC.Name) in ACCESS mode VLAN=$($vNIC.VLANID)"
+        Get-VMNetworkAdapter -ManagementOS -Name $vNIC.Name | Set-VMNetworkAdapterVlan -Access -VlanId $vNIC.VLANID
         
-    }
-
-    if ( ! (Get-NetRoute -DestinationPrefix  $NetRoute.Destination -ErrorAction SilentlyContinue ) )
-    {
-        $NextHopSplit = $($NetRoute.NextHop).split(".")
-        $ifIndex = (Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
-
-        if ( $ifIndex ){
-            New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex | Out-Null
-            Write-SDNNestedLog  "NetRoute SDN VIP pool=$($NetRoute.Destination) is added on $env:computername"
+        if ( $vNIC.Name -eq "Internet")
+        {
+            Write-SDNNestedLog "NAT: Configuring NetNAT on $($vNIC.NAME)"
+            
+            Get-NetNat | Remove-NetNat -Confirm:$false
+            $NetAddr         = $vNIC.IpAddress.split("/")[0] -replace ".[0-9]+$",".0"
+            $PrefixLength   = $vNIC.IpAddress.split("/")[1]
+            
+            New-NetNat -Name $($vNIC.NAME) -InternalIPInterfaceAddressPrefix "$NetAddr/$PrefixLength" -Confirm:$false | Out-Null
         }
-        else  {Write-SDNNestedLog  "ERROR: NetRoute=$($NetRoute.Destination) on $env:computername to reach SDN VIP has not been added" }
-    }
-    else{ Write-SDNNestedLog "NetRoute SDN VIP pool=$($NetRoute.Destination) already present on $env:computername" }
+    
+        #Adding IPRoute if needed
+        if ( $vNIC.NetRoute )
+        {
+            $NetRoute = $vNIC.NetRoute
+            if ( ! (Get-NetRoute -DestinationPrefix  $NetRoute.Destination -ErrorAction SilentlyContinue ) )
+            {
+                $NextHopSplit = $($NetRoute.NextHop).split(".")
+                $ifIndex = (Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -Match "$($NextHopSplit[0]).$($NextHopSplit[1]).$($NextHopSplit[2])").InterfaceIndex
 
-   
+                if ( $ifIndex )
+                {
+                    New-NetRoute -AddressFamily "IPv4" -DestinationPrefix $NetRoute.Destination -NextHop $NetRoute.NextHop -InterfaceIndex $IfIndex | Out-Null
+                    Write-SDNNestedLog  "NetRoute SDN VIP pool=$($NetRoute.Destination) is added on $env:computername"
+                }
+                else  {Write-SDNNestedLog  "ERROR: NetRoute=$($NetRoute.Destination) on $env:computername to reach SDN VIP has not been added" }
+            }
+            else{ Write-SDNNestedLog "NetRoute SDN VIP pool=$($NetRoute.Destination) already present on $env:computername" }
+        }
+    }
 }
 
 function Add-WindowsFeatureOnVM() 
@@ -669,9 +686,29 @@ function Add-SDNNestedADDSDomainController()
         Install-ADDSDomainController @params -InstallDns -Confirm -Force | Out-Null
     } -ArgumentList $paramsAddDc
     Write-SDNNestedLog  "<-- Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
-
 }
 
+function Clear-DcDnsConfig()
+{
+    param(
+        [hashtable] $dc,
+        [String] $MgmtIp,
+        [pscredential] $credential
+    )
+
+    Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings" 
+
+    Invoke-Command -VMName $dc.computername -Credential $credential {         
+        $MgmtIp = (Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4).IPAddress
+        #Removing DNS registration on 2nd adapter
+        Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
+        Get-NetAdapter "Ethernet *" | Set-DnsClient -RegisterThisConnectionsAddress $false
+        dnscmd /ResetListenAddresses $MgmtIp | Out-Null
+        Restart-Service DNS
+        sleep 5
+        ipconfig /registerdns | Out-Null
+    }
+}
 function Add-VMDataDisk() {
     param(
         [String] $VMName,
@@ -773,3 +810,682 @@ function New-SDNS2DCluster {
     } -ArgumentList $Nodes, $IpAddress, $ClusterName, $dummy
     Write-SDNNestedLog "<-- S2DCONFIG: Forming cluster $ClusterName / $IpAddress is done"
 }
+
+
+#######
+#######
+####### NORTHBOUND API - functions (Add Tenant , Add SLB , Remove, Get , and so on)
+#######
+#######
+function Get-HNVProviderLogicalNetwork()
+{
+    param (
+        [String] $uri
+    )
+    
+    $logicalnetworks = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri 
+        
+    foreach ($ln in $logicalnetworks) {  
+        if ($ln.Properties.NetworkVirtualizationEnabled -eq "True") {  
+            $HNVProviderLogicalNetwork = $ln  
+        }
+    }   
+    return $HNVProviderLogicalNetwork
+}
+
+function Get-SDNGatewayPool()
+{
+    param (
+        [String] $uri,
+        [String] $GwPoolName = "Default"
+    )
+
+    $gwPool = Get-NetworkControllerGatewayPool -ConnectionUri $uri  | ? ResourceId -match $GwPoolName
+
+    return $gwPool
+}
+
+function New-TenantVirtualNetwork()
+{
+    param (
+        [String] $uri,
+        [hashtable] $Tenant,
+        [psobject] $HNVProviderLogicalNetwork
+    )
+
+    Write-SDNNestedLog  "Pushing VNET config for $($Tenant.Name) to $uri"
+    
+    #Create the Virtual Network
+    $vnetproperties = new-object Microsoft.Windows.NetworkController.VirtualNetworkProperties  
+    $vnetproperties.AddressSpace = new-object Microsoft.Windows.NetworkController.AddressSpace  
+    $vnetproperties.AddressSpace.AddressPrefixes = $Tenant.TenantVirtualNetworkAddressPrefix    
+    $vnetproperties.LogicalNetwork = $HNVProviderLogicalNetwork  
+        
+    foreach( $subnet in $Tenant.TenantVirtualSubnets )
+    {
+        $vsubnet = new-object Microsoft.Windows.NetworkController.VirtualSubnet  
+        $vsubnet.ResourceId = $subnet.Name  
+        $vsubnet.Properties = new-object Microsoft.Windows.NetworkController.VirtualSubnetProperties  
+        #$vsubnet.Properties.AccessControlList = $acllist  
+        $vsubnet.Properties.AddressPrefix = $subnet.AddressPrefix   
+        $vnetproperties.Subnets += $vsubnet  
+    }
+
+    $vnet = New-NetworkControllerVirtualNetwork -ResourceId $Tenant.TenantVirtualNetworkName -ConnectionUri $uri `
+        -Properties $vnetproperties -Force -PassInnerException
+
+    return $vnet
+}
+function New-SDNVirtualGateway()
+{
+    param (
+        [String] $uri,
+        [String] $VirtualGatewayResourceId,
+        [hashtable] $Tenant,
+        [psobject] $Vnet,
+        [String] $SubnetNameRegex,
+        [psobject] $gwPool,
+        [psobject] $HNVProviderLogicalNetwork
+    )
+
+    Write-SDNNestedLog  "Pushing vGW config for $($Tenant.Name) to $uri"
+    # Create a new object for Tenant Virtual Gateway  
+    $VirtualGWProperties = New-Object Microsoft.Windows.NetworkController.VirtualGatewayProperties   
+
+    # Update Gateway Pool reference  
+    $VirtualGWProperties.GatewayPools = @()   
+    $VirtualGWProperties.GatewayPools += $gwPool   
+
+    # Specify the Virtual Subnet that is to be used for routing between the gateway and Virtual Network   
+    $VirtualGWProperties.GatewaySubnets = @()   
+    for( $i=0;$i -lt $Vnet.Properties.Subnets.count; $i++ )
+    {
+        if (  $Vnet.Properties.Subnets[$i] | ? ResourceId -Match $SubnetNameRegex )
+        {
+            $VirtualGWProperties.GatewaySubnets  +=  $Vnet.Properties.Subnets[$i]
+        }
+    }
+    
+    # Update the rest of the Virtual Gateway object properties  
+    $VirtualGWProperties.RoutingType = "Dynamic"   
+    $VirtualGWProperties.NetworkConnections = @()   
+    $VirtualGWProperties.BgpRouters = @()   
+    #$Vnet.Properties.Subnets 
+
+    # Add the new Virtual Gateway for tenant   
+    $virtualGW = New-NetworkControllerVirtualGateway -ConnectionUri $uri -ResourceId $VirtualGatewayResourceId `
+        -Properties $VirtualGWProperties -Force 
+
+    return $virtualGW
+}
+
+function New-SDNVirtualGatewayNetworkConnections()
+{
+    param (
+        [String] $uri,
+        [hashtable] $gw,
+        [string] $VirtualGatewayId
+    )
+    
+    # Create a new object for the Tenant Network Connection  
+    $nwConnectionProperties = New-Object Microsoft.Windows.NetworkController.NetworkConnectionProperties   
+
+    if ( $gw.Type -eq "L3")
+    {
+        # Create a new object for the Logical Network to be used for L3 Forwarding  
+        $lnProperties = New-Object Microsoft.Windows.NetworkController.LogicalNetworkProperties  
+
+        $lnProperties.NetworkVirtualizationEnabled = $false  
+        $lnProperties.Subnets = @()  
+
+        # Create a new object for the Logical Subnet to be used for L3 Forwarding and update properties  
+        $logicalsubnet = New-Object Microsoft.Windows.NetworkController.LogicalSubnet  
+        $logicalsubnet.ResourceId = $gw.LogicalSunetName 
+        $logicalsubnet.Properties = New-Object Microsoft.Windows.NetworkController.LogicalSubnetProperties  
+        $logicalsubnet.Properties.VlanID = $gw.VLANID 
+        $logicalsubnet.Properties.AddressPrefix = $gw.LogicalSunetAddressPrefix 
+        $logicalsubnet.Properties.DefaultGateways = $gw.LogicalSunetDefaultGateways
+             
+        $lnProperties.Subnets += $logicalsubnet  
+             
+        #$logicalsubnet  
+
+        # Add the new Logical Network to Network Controller  
+        $LogicalNetwork = Get-NetworkControllerLogicalNetwork -ConnectionUri $uri | ? ResourceId -eq $Gw.LogicalNetworkName
+        if ( $null -eq $LogicalNetwork) 
+        {
+            $LogicalNetwork = New-NetworkControllerLogicalNetwork -ConnectionUri $uri `
+                -ResourceId $Gw.LogicalNetworkName -Properties $lnProperties -Force
+        }
+             
+        $logicalNetwork
+
+        # Update the common object properties  
+        $nwConnectionProperties.ConnectionType = $gw.Type
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity 
+
+        # GRE specific configuration (leave blank for L3)  
+        $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
+
+        # Update specific properties depending on the Connection Type  
+        $nwConnectionProperties.L3Configuration = New-Object Microsoft.Windows.NetworkController.L3Configuration   
+        $nwConnectionProperties.L3Configuration.VlanSubnet = $LogicalNetwork.properties.Subnets[0]   
+
+        $nwConnectionProperties.IPAddresses = @()   
+        $localIPAddress = New-Object Microsoft.Windows.NetworkController.CidrIPAddress   
+        $localIPAddress.IPAddress = $gw.LocalIpAddrGW   
+        $localIPAddress.PrefixLength = ($gw.LogicalSunetAddressPrefix).split("/")[1]
+        $nwConnectionProperties.IPAddresses += $localIPAddress   
+
+        $nwConnectionProperties.PeerIPAddresses = $gw.PeerIpAddrGW   
+    }
+    elseif ($gw.type -eq "GRE") 
+    {
+        # Update the common object properties  
+        $nwConnectionProperties.ConnectionType = $gw.type
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity   
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity   
+
+        # Update specific properties depending on the Connection Type  
+        $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
+        $nwConnectionProperties.GreConfiguration.GreKey = $Gw.PSK   
+
+        # Tunnel Destination (Remote Endpoint) Address  
+        $nwConnectionProperties.DestinationIPAddress = $Gw.GrePeer
+
+        # L3 specific configuration (leave blank for GRE)  
+        $nwConnectionProperties.L3Configuration = New-Object Microsoft.Windows.NetworkController.L3Configuration   
+        $nwConnectionProperties.IPAddresses = @()   
+        $nwConnectionProperties.PeerIPAddresses = @()   
+    }
+    elseif ( $gw.type -eq "IPSEC") 
+    {
+        # Create a new object for Tenant Network Connection  
+        $nwConnectionProperties = New-Object Microsoft.Windows.NetworkController.NetworkConnectionProperties   
+
+        # Update the common object properties  
+        $nwConnectionProperties.ConnectionType =  $gw.type   
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity   
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity   
+
+        # Update specific properties depending on the Connection Type  
+        $nwConnectionProperties.IpSecConfiguration = New-Object Microsoft.Windows.NetworkController.IpSecConfiguration   
+        $nwConnectionProperties.IpSecConfiguration.AuthenticationMethod = $Gw.AuthenticationMethod   
+        $nwConnectionProperties.IpSecConfiguration.SharedSecret = $Gw.PSK
+
+        $nwConnectionProperties.IpSecConfiguration.QuickMode = New-Object Microsoft.Windows.NetworkController.QuickMode   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.PerfectForwardSecrecy = "PFS2048"   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.AuthenticationTransformationConstant = "SHA256128"   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.CipherTransformationConstant = "DES3"   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.SALifeTimeSeconds = 1233   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.IdleDisconnectSeconds = 500   
+        $nwConnectionProperties.IpSecConfiguration.QuickMode.SALifeTimeKiloBytes = 2000   
+
+        $nwConnectionProperties.IpSecConfiguration.MainMode = New-Object Microsoft.Windows.NetworkController.MainMode   
+        $nwConnectionProperties.IpSecConfiguration.MainMode.DiffieHellmanGroup = "Group2"   
+        $nwConnectionProperties.IpSecConfiguration.MainMode.IntegrityAlgorithm = "SHA256"   
+        $nwConnectionProperties.IpSecConfiguration.MainMode.EncryptionAlgorithm = "AES256"   
+        $nwConnectionProperties.IpSecConfiguration.MainMode.SALifeTimeSeconds = 1234   
+        $nwConnectionProperties.IpSecConfiguration.MainMode.SALifeTimeKiloBytes = 2000   
+
+        # L3 specific configuration (leave blank for IPSec)  
+        $nwConnectionProperties.IPAddresses = @()   
+        $nwConnectionProperties.PeerIPAddresses = @()
+
+        # Tunnel Destination (Remote Endpoint) Address  
+        $nwConnectionProperties.DestinationIPAddress = $Gw.IPSecPeer 
+
+    }
+     
+    # Update the IPv4 Routes that are reachable over the site-to-site VPN Tunnel  
+    $nwConnectionProperties.Routes = @()   
+     
+    foreach ( $RouteDstPrefix in $Gw.RouteDstPrefix) 
+    {
+        $ipv4Route = New-Object Microsoft.Windows.NetworkController.RouteInfo   
+        $ipv4Route.DestinationPrefix = $RouteDstPrefix
+        <# 
+        if ( $gw.Type -eq "L3")
+        { 
+            $ipv4Route.NextHop = $Gw.PeerIpAddrGW[0] 
+        }
+        #>
+        $ipv4Route.metric = 10   
+        $nwConnectionProperties.Routes += $ipv4Route   
+    }
+
+     # Add the new Network Connection for the tenant
+     New-NetworkControllerVirtualGatewayNetworkConnection -ConnectionUri $uri -VirtualGatewayId $VirtualGatewayId `
+         -ResourceId "nwConnection_$($gw.Type)" -Properties $nwConnectionProperties -Force
+}
+
+function New-SDNVirtualGatewayBgpRouter()
+{
+    param (
+        [String] $uri,
+        [hashtable] $gw,
+        [string] $VirtualGatewayId
+    )
+
+    # Create a new object for the Tenant BGP Router  
+    $bgpRouterproperties = New-Object Microsoft.Windows.NetworkController.VGwBgpRouterProperties   
+
+    # Update the BGP Router properties  
+    $bgpRouterproperties.ExtAsNumber = $gw.BgpLocalExtAsNumber
+    $bgpRouterproperties.RouterId = $gw.BgpLocalBRouterId
+    $bgpRouterproperties.RouterIP = $gw.BgpLocalRouterIP  
+        
+    $bgpRouterResourceId="$($VirtualGatewayId)_$($gw.Type)_BGPRouter"
+    # Add the new BGP Router for the tenant  
+    $bgpRouter = New-NetworkControllerVirtualGatewayBgpRouter -ConnectionUri $uri -VirtualGatewayId $VirtualGatewayId `
+        -ResourceId $bgpRouterResourceId -Properties $bgpRouterProperties -Force
+
+    return $bgpRouter.ResourceId
+}
+function New-SDNVirtualGatewayBgpPeer()
+{
+    param (
+        [String] $uri,
+        [hashtable] $gw,
+        [string] $BgpRouterId,
+        [string] $VirtualGatewayId
+    )
+
+    #Configure BGP on the vGW 
+    if ( $gw.BGPEnabled ) 
+    {     
+        Write-SDNNestedLog  "Pushing BGP config for $($gw.Tenant) vGW to $uri"
+
+        # Create a new object for Tenant BGP Peer  
+        $bgpPeerProperties = New-Object Microsoft.Windows.NetworkController.VGwBgpPeerProperties   
+
+        # Update the BGP Peer properties  
+        $bgpPeerProperties.PeerIpAddress = $gw.BgpPeerIpAddress   
+        $bgpPeerProperties.AsNumber = $gw.BgpPeerAsNumber   
+        $bgpPeerProperties.ExtAsNumber = $gw.BgpPeerExtAsNumber 
+
+        $bgpRouter = Get-NetworkControllerVirtualGatewayBgpRouter -ConnectionUri $uri -VirtualGatewayId $VirtualGatewayId `
+            -ResourceId $BgpRouterId
+
+        $BgpPeerId = "BgpRouter_$($Gw.Tenant)_$($gw.Type)_BGPPeerAs$($Gw.BgpPeerAsNumber)" 
+        # Add the new BGP Peer for tenant  
+        New-NetworkControllerVirtualGatewayBgpPeer -ConnectionUri $uri -VirtualGatewayId $VirtualGatewayId -BgpRouterName $bgpRouter.ResourceId `
+            -ResourceId $BgpPeerId -Properties $bgpPeerProperties -Force
+    }
+    else
+    {
+        Write-SDNNestedLog  "Cannot add BGPPeer on $VirtualGatewayId as BGP is not enabled on"
+    }
+}
+
+function New-SDNNetworkInterface()
+{
+    param (
+        [String] $uri,
+        [string] $vmnicResourceId,
+        [hashtable] $NIC,
+        [string] $TenantSubnetRef
+    )
+
+    $vmnicproperties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceProperties
+    $vmnicproperties.PrivateMacAllocationMethod = "Dynamic"                
+    $vmnicproperties.IsPrimary = $true 
+
+    $vmnicproperties.DnsSettings = new-object Microsoft.Windows.NetworkController.NetworkInterfaceDnsSettings
+    
+    if ( $NIC.DNS )
+    {
+        $vmnicproperties.DnsSettings.DnsServers = $NIC.DNS
+    }
+
+    $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
+    $ip = $NIC.IPAddress.split("/")[0]
+    
+    $ipconfiguration.resourceid = "IpConfig_$ip"
+    $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
+    $ipconfiguration.properties.PrivateIPAddress = $ip
+    $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
+
+    $ipconfiguration.properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
+
+    $ipconfiguration.properties.subnet.ResourceRef =  $TenantSubnetRef
+    $vmnicproperties.IpConfigurations = @($ipconfiguration)
+
+    Write-SDNNestedLog  "Pushing $vmnicResourceId NIC config to REST API"
+
+    $SDNNic = New-NetworkControllerNetworkInterface -ResourceId $vmnicResourceId -Properties $vmnicproperties -ConnectionUri $uri -Force
+
+    return $nic
+}
+
+function Add-SDNNetworkInterfaceIPConfiguration()
+{
+    param (
+        [String] $uri,
+        [String] $IpConfigName,
+        [String] $ip,
+        [string] $TenantSubnetRef,
+        [psobject] $SDNNic
+    )
+
+    $ipconfiguration = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfiguration
+    $ipconfiguration.resourceid = "IpConfig_$ip"
+    $ipconfiguration.properties = new-object Microsoft.Windows.NetworkController.NetworkInterfaceIpConfigurationProperties
+    $ipconfiguration.properties.PrivateIPAddress = $ip
+    $ipconfiguration.properties.PrivateIPAllocationMethod = "Static"
+    $ipconfiguration.properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
+    $ipconfiguration.properties.subnet.ResourceRef = $TenantSubnetRef
+
+    $SDNNic.properties.IpConfigurations += $ipconfiguration
+
+    Write-SDNNestedLog "Adding VM=$VMName NIC=$($SDNNic.Name) Ipconfig=$ip to VMNic Object"
+
+    $nic = New-NetworkControllerNetworkInterface -ResourceID $SDNNic.resourceid -Properties $SDNNic.properties -ConnectionUri $uri -Force
+}
+
+function Connect-SDNNetworkInterface()
+{
+    param (
+        [String] $uri,
+        [string] $VMName,
+        [string] $SDNNicResourceId,
+        [string] $SDNNicInstanceId
+    )
+
+    #Do not change the hardcoded IDs in this section, because they are fixed values and must not change.
+    $FeatureId = "9940cd46-8b06-43bb-b9d5-93d50381fd56"
+                        
+    $vmNics = Get-VMNetworkAdapter -VMName $VMName
+                        
+    $CurrentFeature = Get-VMSwitchExtensionPortFeature -FeatureId $FeatureId -VMNetworkAdapter $vmNics 
+
+    Write-SDNNestedLog "Configuring SDNSwith Extension for $VMName vNIC"
+        
+    if ($null -eq $CurrentFeature)
+    {
+        $Feature = Get-VMSystemSwitchExtensionPortFeature -FeatureId $FeatureId
+
+        $Feature.SettingData.ProfileId = "{$SDNNicInstanceId}"
+        $Feature.SettingData.NetCfgInstanceId = "{56785678-a0e5-4a26-bc9b-c0cba27311a3}"
+        $Feature.SettingData.CdnLabelString = "TestCdn"
+        $Feature.SettingData.CdnLabelId = 1111
+        $Feature.SettingData.ProfileName = "Testprofile"
+        $Feature.SettingData.VendorId = "{1FA41B39-B444-4E43-B35A-E1F7985FD548}"
+        $Feature.SettingData.VendorName = "NetworkController"
+        $Feature.SettingData.ProfileData = 1
+                    
+        Add-VMSwitchExtensionPortFeature -VMSwitchExtensionFeature $Feature -VMNetworkAdapter $vmNics 
+    }
+    else {
+        $CurrentFeature.SettingData.ProfileId = "{$SDNNicInstanceId}"
+        $CurrentFeature.SettingData.ProfileData = 1
+                
+        Set-VMSwitchExtensionPortFeature -VMSwitchExtensionFeature $CurrentFeature -VMNetworkAdapter $vmNics
+    }
+    #Wait to be sure that Mac Address Allocation has been done
+    do{
+        $nic = Get-NetworkControllerNetworkInterface -ResourceID $SDNNicResourceId -ConnectionUri $uri
+        Start-Sleep 1
+    }while ( $null -eq $nic.properties.PrivateMacAddress );
+
+    $vmNics | Set-VMNetworkAdapter -StaticMacAddress $nic.properties.PrivateMacAddress   
+}
+
+function New-SDNSoftwareLoadBalancerFrontendIpConfiguration()
+{
+    param (
+        [String] $uri,
+        [string] $ip,
+        [string] $lbresourceId,
+        [string] $ResourceId,
+        [string] $VIPAllocationMethod,
+        [string] $SubnetRef
+    )
+
+    $FrontEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfiguration
+            
+    $FrontEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerFrontendIpConfigurationProperties
+    $FrontEnd.resourceId = $ResourceId
+    $FrontEnd.ResourceRef = "/loadBalancers/$lbresourceId/frontendIPConfigurations/$($FrontEnd.resourceId)"
+    
+    $FrontEnd.properties.PrivateIPAddress = $ip
+    $FrontEnd.Properties.PrivateIPAllocationMethod = $VIPAllocationMethod
+
+    $FrontEnd.Properties.Subnet = new-object Microsoft.Windows.NetworkController.Subnet
+    $FrontEnd.Properties.Subnet.ResourceRef = $SubnetRef
+
+    return $FrontEnd
+}
+
+function New-SDNSoftwareLoadBalancerBackendAddressPool()
+{
+    param (
+        [String] $uri,
+        [string] $lbresourceId,
+        [string] $ResourceId
+    )
+
+    $BackEnd = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPool
+    $BackEnd.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerBackendAddressPoolProperties
+    $BackEnd.resourceId = $ResourceId
+    $BackEnd.ResourceRef = "/loadBalancers/$lbresourceId/backendAddressPools/$($BackEnd.resourceId)"
+
+    return $BackEnd
+}
+
+function New-SDNLoadBalancingRule()
+{
+    param (
+        [String] $LBRuleResourceId,
+        [psobject] $FrontEnd,
+        [psobject] $BackEnd,
+        [hashtable] $vip
+    )
+
+    $lbrule = new-object Microsoft.Windows.NetworkController.LoadBalancingRule
+    $lbrule.ResourceId = $LBRuleResourceId
+
+    $lbrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancingRuleProperties    
+    $lbrule.properties.frontendipconfigurations += $FrontEnd
+    $lbrule.properties.backendaddresspool = $BackEnd 
+    $lbrule.properties.protocol = $vip.Protocol
+    $lbrule.properties.frontendPort = $vip.FrontendPort
+    $lbrule.properties.backendPort = $vip.BackendPort
+    $lbrule.properties.IdleTimeoutInMinutes = 4 
+
+    return $lbrule
+}
+
+function New-SDNLoadBalancerOutboundNatRule()
+{
+    param (
+        [String] $LBRuleResourceId,
+        [psobject] $FrontEnd,
+        [psobject] $BackEnd,
+        [String] $Protocol
+    )
+
+    $onatrule = new-object Microsoft.Windows.NetworkController.LoadBalancerOutboundNatRule
+    $onatrule.ResourceId = $LBRuleResourceId
+
+    $onatrule.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerOutboundNatRuleProperties
+    $onatrule.properties.frontendipconfigurations += $FrontEnd
+    $onatrule.properties.backendaddresspool = $BackEnd
+    $onatrule.properties.protocol = $Protocol
+
+    return $onatrule
+}
+function New-SDNLoadBalancerProbe()
+{
+    param (
+        [String] $ProbeName,
+        [String] $lbresourceId,
+        [hashtable] $vip,
+        [int] $IntervalInSeconds,
+        [int] $NumberOfProbes
+    )
+
+    $Probe = new-object Microsoft.Windows.NetworkController.LoadBalancerProbe
+    $Probe.ResourceId = $ProbeName
+    $Probe.ResourceRef = "/loadBalancers/$lbresourceId/Probes/$($Probe.ResourceId)"
+   
+    $Probe.properties = new-object Microsoft.Windows.NetworkController.LoadBalancerProbeProperties
+    $Probe.properties.Protocol = $vip.Protocol
+    $Probe.properties.Port = $vip.BackendPort
+    #$Probe.properties.RequestPath = "/health.htm"
+    $Probe.properties.IntervalInSeconds = $IntervalInSeconds
+    $Probe.properties.NumberOfProbes = $NumberOfProbes
+
+    return $Probe
+}
+
+function New-SDNSoftwareLoadBalancer()
+{
+    param (
+        [String] $uri,
+        [String] $lbresourceId,
+        [psobject] $FrontEnd,
+        [psobject] $BackEnd,
+        [psobject] $lbrule,
+        [psobject] $onatrule,
+        [psobject] $Probe
+    )
+
+    Write-SDNNestedLog  "Pushing LoadBalancer $lbresourceId to $uri"
+
+    #$lb = New-SDNSoftwareLoadBalancer $uri $lbresourceId $frontend $backendpool $lbrule $onatrule $probe 
+    $lb = Get-NetworkControllerLoadBalancer -ConnectionUri $uri | ? ResourceId -eq $lbresourceId 
+    if ( $lb )
+    {
+        $LoadBalancerProperties = $lb.properties
+    }
+    else 
+    {
+        $LoadBalancerProperties = new-object Microsoft.Windows.NetworkController.LoadBalancerProperties        
+    }
+
+    $LoadBalancerProperties.frontendipconfigurations += $FrontEnd
+    $LoadBalancerProperties.backendAddressPools += $BackEnd
+    if ( $lbrule )
+    {
+        $LoadBalancerProperties.loadbalancingRules += $lbrule
+    }
+    
+    if ( $onatrule )
+    {
+        $LoadBalancerProperties.OutboundNatRules += $onatrule
+    }
+
+    if ( $Probe )
+    {
+        $LoadBalancerProperties.Probes += $Probe
+        $LoadBalancerProperties.loadbalancingRules.properties.Probe += $Probe 
+    }
+
+    $lb = New-NetworkControllerLoadBalancer -ConnectionUri $uri -ResourceId $lbresourceId `
+        -Properties $LoadBalancerProperties -Force -PassInnerException
+
+    return $lb
+}
+
+
+function New-SDNiDNSConfiguration()
+{
+    param(
+        [string] $ncrestfqdn,
+        [string] $Domain,
+        [string] $User,
+        [string] $Password,
+        [string] $DNS,
+        [string] $DNSZone,
+        [PSCredential] $credential
+    )
+
+    Write-SDNNestedLog  "Pushing iDNS config to $RestNameFQDN"
+
+    $ncCreds=New-Object Microsoft.Windows.Networkcontroller.credentialproperties
+    $ncCreds.type="usernamePassword"
+    $ncCreds.username="$Domain\$User"
+    $ncCreds.value=$Password
+    $uri = "https://$ncrestfqdn"
+
+    New-NetworkControllerCredential -ConnectionUri $uri -ResourceId "iDnsServer-Credential" -Properties $ncCreds -force
+
+    $json = @"
+{
+    "properties": {
+        "connections": [{
+            "managementAddresses": ["$DNS"],
+            "credential": {
+                "resourceRef": "/credentials/iDnsServer-Credential"
+            },
+            "credentialType": "usernamePassword"
+        }],
+        "zone": "$DNSZone"
+    }
+}
+"@
+
+    $headers = @{"Accept"="application/json"}
+    $content = "application/json; charset=UTF-8"
+    $timeout = 10
+    $method = "PUT"
+    # Change ncrestfqdn appropriately if using outside of AzureStack
+    $body = $json
+    $uri = "https://$ncrestfqdn/networking/v1/iDnsServer/Configuration"
+    #Use -Credential parameter instead of -UseDefaultCredentials if required.
+    Invoke-WebRequest -Headers $headers -ContentType $content -Method $method -Uri $uri -Body $body -DisableKeepAlive -UseBasicParsing -Credential $credential
+
+}
+
+function New-SDNNestedDhcpServerOnMgmt()
+{
+    param (
+        [string] $VMName,
+        [string] $DNSfqdn,
+        [string] $DNSMgmt,
+        [string] $Subnet,
+        [PSCredential] $credential
+    )
+
+    Invoke-Command -VMName $VMName -Credential $credential {
+        $DNSfqdn  = $args[0]
+        $DNSMgmt  = $args[1]
+        $Subnet   = $args[2]
+
+        Write-Host  "Configuring DHCP Server on $ENV:COMPUTERNAME"
+
+        netsh dhcp add securitygroups
+        Restart-Service dhcpserver
+         
+        Add-DhcpServerInDC -DnsName $DNSfqdn -IPAddress $DNSMgmt
+        Get-DhcpServerInDC
+
+        Set-ItemProperty -Path registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager\Roles\12 -Name ConfigurationState -Value 2
+        
+        Set-DhcpServerv4DnsSetting -DynamicUpdates "Never"
+
+        $Net=$Subnet.split("/")[0]
+        $Cidr=$Subnet.split("/")[1]
+        
+        if ( $cidr -eq "24")
+        {
+            $Mask = "255.255.255.0"
+        }
+
+        $StartRange=$Net.split(".")[0]+"."+$Net.split(".")[1]+"."+$Net.split(".")[2]+".200"
+        $EndRange=$Net.split(".")[0]+"."+$Net.split(".")[1]+"."+$Net.split(".")[2]+".210"
+
+        $IntAlias=(Get-NetAdapter | Get-NetIpAddress -AddressFamily IPv4 | ? IpAddress -Match $($Net.split(".")[0]+"."+$Net.split(".")[1]+"."+$Net.split(".")[2])).InterfaceAlias
+
+        if($IntAlias)
+        {
+            Get-NetAdapter | %{ Set-DhcpServerv4Binding -BindingState $false -InterfaceAlias $_.InterfaceAlias }
+            Set-DhcpServerv4Binding -BindingState $True -InterfaceAlias $IntAlias
+        }
+        Add-DhcpServerv4Scope -name "MGMT" -StartRange $StartRange -EndRange $EndRange -SubnetMask $Mask -State Active
+        Set-DhcpServerv4OptionValue -OptionID 3 -Value $DNSMgmt -ScopeID $Net
+        Set-DhcpServerv4OptionValue -OptionID 6 -Value $DNSMgmt -ScopeID $Net 
+    } -ArgumentList $DNSfqdn, $DNSMgmt, $Subnet
+}   

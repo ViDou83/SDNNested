@@ -1,12 +1,12 @@
 @{
     ScriptVersion        = "2.0"
 
-    VHDPath              = "E:\VMs\Template"
+    VHDPath              = "F:\VMs\Template"
     #The VHD file name has to match with the one located on the above path
     VHDFile              = "Win2019-Core.vhdx"
     VHDGUIFile           = "Win2019-GUI.vhdx"
-    VMLocation           = "E:\VMs"
-    
+
+    VMLocation           = "F:\VMs"
     #Domain of the SDN infrastructure (NC/MUX/GW will be joined)
     DomainFQDN           = "SDN.LAB"
     #IP PLAN
@@ -14,34 +14,23 @@
     ManagementGateway    = "10.184.108.1"
     ManagementDNS        = @("10.184.108.1")
     ManagementVLANID     = 7
-
     #Domain users infos
     DomainJoinUsername   = "SDN\administrator"
     LocalAdminDomainUser = "SDN\administrator"
 
     #Put the Username and Password of the Local Machine where SDNNested will be deploy
     #In case of Azure, this is the Azure VM cred 
-    VMHostadmin          = "Localuser"
-    VMHostPwd            = "MyVeryComplexPassword"
+    VMHostadmin         = "Localuser"
+    VMHostPwd           = "MyVeryComplexPassword"
 
     #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
-    S2DEnabled          = $False
-
-    #If you want SDN VM's getting Internet access from VMHOST
-    ShareHostInternet = $true
-
-    #Adding Mirroring of the SDN stack
-    PortMirroring = $true
+    SDNonS2D          = $true
 
     #LOCAL MACHINE / AZURE VM SDN vNICs 
-    VMHostvNICs     = 
+    HostSdnNICs     = 
     @( 
-        @{ SwitchName="SDN"; Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7; 
-                NetRoute = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.1"; }
-        };
-        @{ SwitchName="SDN"; Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("") ; VLANID = 11; NetRoute =""; };
-        #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
-        @{ SwitchName="Internet"; Name = "Internet"; IPAddress = '192.168.1.1/24'; Gateway = ''; DNS = @("") ; VLANID = 2;  NetRoute =""; };
+        @{ Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
+        @{ Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
     )   
 
     #DCs, HYPV HOSTs (where SDN stack will be deployed), ToR Router and Tenants External GWs def 
@@ -49,15 +38,12 @@
     @(
         @{
             ComputerName = 'SDN-DC01';
-            VMMemory     = 2GB;
+            VMMemory     = 4GB;
             VMProcessorCount = 2;
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },                #Second in case if ToR is going to be deployed 
-                #Second in case if ToR is going to be deployed 
-                @{ Name = "Ethernet 2"; IPAddress = '10.10.56.1/24'; Gateway = ''; DNS = '' ; VLANID = 11 };
-                #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
-                @{ Name = "Ethernet 3"; IPAddress = '192.168.1.254/24'; Gateway = '192.168.1.1'; DNS = '' ; VLANID = 2 };
-            )   
+                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 }
+                #Second NIC in case if ToR is going to be deployed (see example on other config files)
+           )   
         }
     )
 
@@ -65,18 +51,16 @@
     @(
         @{
             ComputerName = 'SDN-HOST01'; 
-            VMMemory     = 26GB;
-            VMProcessorCount = 4;
-            VMDiskSize = 384GB; #Will be ignore is SDNonS2D is $true
+            VMMemory     = 52GB;
+            VMProcessorCount = 8;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
         },   
         @{
             ComputerName = 'SDN-HOST02'; 
-            VMMemory     = 24GB;
-            VMProcessorCount = 4;
-            VMDiskSize = 384GB; #Will be ignore is SDNonS2D is $true
+            VMMemory     = 52GB;
+            VMProcessorCount = 8;
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -90,37 +74,71 @@
             Tenant       = "Contoso"
             ComputerName = 'Contoso-GW01' 
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.127.134.65/25'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 1001 };
+                @{ Name = "Ethernet"; IPAddress = '10.127.134.65/25'; Gateway = '10.127.134.55'; DNS = @("10.184.108.1") ; VLANID = 1001 };
             )   
         },   
         @{
             Tenant       = "Fabrikam"
             ComputerName = 'Fabrikam-GW01'
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.10.56.250/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
+                @{ Name = "Ethernet"; IPAddress = '10.10.56.250/23'; Gateway = '10.10.56.1'; DNS = @("10.184.108.1") ; VLANID = 11 };
             )   
+        }
+    )
+
+    #Will be used to configure BPG peering between external Tenant's GW and SDN multi-tenant vGW (see SDNNested-Deploy-Tenant.psd1 config file)
+    TenantvGWs           =
+    @(
+        @{
+            Tenant                      = "Contoso"
+            Type                        = 'L3'
+            VirtualGwName               = 'Contoso_vGW'
+            LogicalNetworkName          = "Contoso_L3_Interco_Network"
+            LogicalSunetName            = "Contoso_L3_Interco_Subnet"
+            VLANID                      = 1001;
+            LogicalSunetAddressPrefix   = "10.127.134.0/25"
+            LogicalSunetDefaultGateways = "10.127.134.1"
+            LocalIpAddrGW               = "10.127.134.55"
+            PeerIpAddrGW                = @( "10.127.134.65" )
+            RouteDstPrefix              = @( "1.1.1.1/32" )
+            #BGP Router properties  
+            BGPEnabled                  = $True;
+            BgpLocalExtAsNumber         = "0.64512"   
+            BgpLocalBRouterId           = "10.127.134.55"   
+            BgpLocalRouterIP            = @("10.127.134.55")
+            BgpPeerIpAddress            = "10.127.134.65"   
+            BgpPeerAsNumber             = 64521   
+            BgpPeerExtAsNumber          = "0.64521"   
+        },
+        @{
+            Tenant              = "Fabrikam"
+            Type                = 'GRE'
+            VirtualGwName       = 'Fabrikam_vGW'
+            RouteDstPrefix      = @( "172.16.0.0/16" )
+            #BGP Router properties  
+            PSK                 = "1234"
+            GrePeer             = "1.1.1.1"
+            BGPEnabled          = $true
+            BgpLocalExtAsNumber = "0.64512"   
+            BgpLocalBRouterId   = "Fabrikam_vGW"   
+            BgpLocalRouterIP    = @("172.16.179.179")
+            BgpPeerIpAddress    = "172.16.254.50"   
+            BgpPeerAsNumber     = 64521   
+            BgpPeerExtAsNumber  = "0.64521"   
         }
     )
 
     # Top of Rack (ToR) router configuration 
     # if ComputerName is existing VMs (eg. DC), deploy RRAS on it and configure BGP and so on 
     # otherwise deploy a dedicated VM
-    # In case of existing VMs, all ToRrouter attributes will be ignored, it means that the PA NIC has to be declared (see commnet on above in DC Hash)
     TORrouter = 
     @(
         @{
-            #ComputerName = 'SDN-TORGW'; 
-            ComputerName = 'SDN-DC01'; 
+            ComputerName = 'SDN-TORGW'; 
 
-            InternetNAT         = $true
-            InsideNAT           = "10.10.56.1"
-            OutsideNAT          = "192.168.1.254"
-            
-            NICs    = 
-            @( 
-                @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
-                @{ Name = "Ethernet 2"; IPAddress = '10.184.108.254/24'; Gateway = ''; DNS = '' ; VLANID = 7 };
-                @{ Name = "Ethernet 3"; IPAddress = '192.168.1.254/24'; Gateway = '192.168.1.1'; DNS = '' ; VLANID = 2 };
+            NICs    = @( 
+                            @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
+                            @{ Name = "Ethernet 2"; IPAddress = '10.184.108.254/24'; Gateway = ''; DNS = '' ; VLANID = 7 };
             )
 
             SDNASN       = '64628'
@@ -139,16 +157,13 @@
             )
 
             StaticRoutes = @(
-                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; },
-                @{  Route = "3.3.3.3/32"; NextHop = '10.10.56.250'; }
+                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; }
             )
         }
     )
 
 
-    # If SDNonS2D          = $False 
-    # then the S2DDiskSize and S2DDiskNumber will be ignored
-    # otherwise disk will be created and used to store VMs
+    #If SDNonS2D          = $False then the S2DDiskSize and S2DDiskNumber will be ignored
     S2DDiskSize          = 128GB
     S2DDiskNumber        = 3
     S2DClusterIP         = "10.184.108.4"
@@ -156,7 +171,7 @@
     S2DClusterName       = "SDNFABRIC"
    
     #Product Key of VMs
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
 
     # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
     SwitchName           = "SDN"
@@ -166,7 +181,10 @@
     # Can be overloaded at VMs level
     VMMemory             = 2GB
     VMProcessorCount     = 2
- 
+    
+    # Tenants VIP could be reached from the local machine (or the AzureVM)
+    PublicVIPNetRoute         = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.254"; }
+
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''
     # TimeZone         = ''
@@ -176,4 +194,5 @@
     # DomainJoinSecurePassword  = ''
     # LocalAdminSecurePassword   = ''
     # NCSecurePassword   = ''
+
 }

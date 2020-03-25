@@ -24,13 +24,23 @@
     VMHostPwd           = "MyVeryComplexPassword"
 
     #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
-    SDNonS2D          = $true
+    S2DEnabled          = $False
+
+    #If you want SDN VM's getting Internet access from VMHOST
+    ShareHostInternet = $true
+
+    #Adding Mirroring of the SDN stack
+    PortMirroring = $true
 
     #LOCAL MACHINE / AZURE VM SDN vNICs 
-    HostSdnNICs     = 
+    VMHostvNICs     = 
     @( 
-        @{ Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7 };
-        @{ Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
+        @{ SwitchName="SDN"; Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7; 
+                NetRoute = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.1"; }
+        };
+        @{ SwitchName="SDN"; Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("") ; VLANID = 11; NetRoute =""; };
+        #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
+        @{ SwitchName="Internet"; Name = "Internet"; IPAddress = '192.168.1.1/24'; Gateway = ''; DNS = @("") ; VLANID = 2;  NetRoute =""; };
     )   
 
     #DCs, HYPV HOSTs (where SDN stack will be deployed), ToR Router and Tenants External GWs def 
@@ -38,12 +48,15 @@
     @(
         @{
             ComputerName = 'SDN-DC01';
-            VMMemory     = 4GB;
+            VMMemory     = 2GB;
             VMProcessorCount = 2;
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 }
-                #Second NIC in case if ToR is going to be deployed (see example on other config files)
-           )   
+                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },                #Second in case if ToR is going to be deployed 
+                #Second in case if ToR is going to be deployed 
+                @{ Name = "Ethernet 2"; IPAddress = '10.10.56.1/24'; Gateway = ''; DNS = '' ; VLANID = 11 };
+                #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
+                @{ Name = "Ethernet 3"; IPAddress = '192.168.1.254/24'; Gateway = '192.168.1.1'; DNS = '' ; VLANID = 2 };
+            )   
         }
     )
 
@@ -71,74 +84,46 @@
     TenantInfraGWs                  = 
     @(
         @{
-            Tenant       = "Contoso"
-            ComputerName = 'Contoso-GW01' 
+            Tenant       = "CONTOSO" #L3
+            ComputerName = 'CONTOSO-GW01' 
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.127.134.65/25'; Gateway = '10.127.134.55'; DNS = @("10.184.108.1") ; VLANID = 1001 };
+                @{ Name = "Ethernet"; IPAddress = '10.127.134.65/25'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 1001 };
             )   
         },   
         @{
-            Tenant       = "Fabrikam"
-            ComputerName = 'Fabrikam-GW01'
+            Tenant       = "FABRIKAM" #IPSEC
+            ComputerName = 'FABRIKAM-GW01'
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.10.56.250/23'; Gateway = '10.10.56.1'; DNS = @("10.184.108.1") ; VLANID = 11 };
+                @{ Name = "Ethernet"; IPAddress = '10.10.56.250/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
             )   
-        }
-    )
-
-    #Will be used to configure BPG peering between external Tenant's GW and SDN multi-tenant vGW (see SDNNested-Deploy-Tenant.psd1 config file)
-    TenantvGWs           =
-    @(
+        },   
         @{
-            Tenant                      = "Contoso"
-            Type                        = 'L3'
-            VirtualGwName               = 'Contoso_vGW'
-            LogicalNetworkName          = "Contoso_L3_Interco_Network"
-            LogicalSunetName            = "Contoso_L3_Interco_Subnet"
-            VLANID                      = 1001;
-            LogicalSunetAddressPrefix   = "10.127.134.0/25"
-            LogicalSunetDefaultGateways = "10.127.134.1"
-            LocalIpAddrGW               = "10.127.134.55"
-            PeerIpAddrGW                = @( "10.127.134.65" )
-            RouteDstPrefix              = @( "1.1.1.1/32" )
-            #BGP Router properties  
-            BGPEnabled                  = $True;
-            BgpLocalExtAsNumber         = "0.64512"   
-            BgpLocalBRouterId           = "10.127.134.55"   
-            BgpLocalRouterIP            = @("10.127.134.55")
-            BgpPeerIpAddress            = "10.127.134.65"   
-            BgpPeerAsNumber             = 64521   
-            BgpPeerExtAsNumber          = "0.64521"   
-        },
-        @{
-            Tenant              = "Fabrikam"
-            Type                = 'GRE'
-            VirtualGwName       = 'Fabrikam_vGW'
-            RouteDstPrefix      = @( "172.16.0.0/16" )
-            #BGP Router properties  
-            PSK                 = "1234"
-            GrePeer             = "1.1.1.1"
-            BGPEnabled          = $true
-            BgpLocalExtAsNumber = "0.64512"   
-            BgpLocalBRouterId   = "Fabrikam_vGW"   
-            BgpLocalRouterIP    = @("172.16.179.179")
-            BgpPeerIpAddress    = "172.16.254.50"   
-            BgpPeerAsNumber     = 64521   
-            BgpPeerExtAsNumber  = "0.64521"   
+            Tenant       = "ACME" #GRE
+            ComputerName = 'ACME-GW01'
+            NICs         = @( 
+                @{ Name = "Ethernet"; IPAddress = '10.10.56.251/23'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 11 };
+            )   
         }
     )
 
     # Top of Rack (ToR) router configuration 
     # if ComputerName is existing VMs (eg. DC), deploy RRAS on it and configure BGP and so on 
     # otherwise deploy a dedicated VM
+    # In case of existing VMs, all ToRrouter attributes will be ignored, it means that the PA NIC has to be declared (see commnet on above in DC Hash)
     TORrouter = 
     @(
         @{
             ComputerName = 'SDN-TORGW'; 
 
-            NICs    = @( 
-                            @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
-                            @{ Name = "Ethernet 2"; IPAddress = '10.184.108.254/24'; Gateway = ''; DNS = '' ; VLANID = 7 };
+            InternetNAT         = $true
+            InsideNAT           = "10.10.56.1"
+            OutsideNAT          = "192.168.1.254"
+            
+            NICs    = 
+            @( 
+                @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
+                @{ Name = "Ethernet 2"; IPAddress = '10.184.108.254/24'; Gateway = ''; DNS = '10.184.108.1' ; VLANID = 7 };
+                @{ Name = "Ethernet 3"; IPAddress = '192.168.1.254/24'; Gateway = '192.168.1.1'; DNS = '' ; VLANID = 2 };
             )
 
             SDNASN       = '64628'
@@ -157,7 +142,8 @@
             )
 
             StaticRoutes = @(
-                @{  Route = "1.1.1.1/32"; NextHop = '10.10.56.250'; }
+                @{  Route = "3.3.3.3/32"; NextHop = '10.10.56.250'; },
+                @{  Route = "5.5.5.5/32"; NextHop = '10.10.56.251'; }
             )
         }
     )

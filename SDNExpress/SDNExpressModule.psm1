@@ -745,7 +745,8 @@ function New-SDNExpressiDNSConfiguration {
 
     $iDNSProperties.Zone = $ZoneName
 
-    New-NetworkControllerIDnsServerConfiguration -connectionuri $RestName -ResourceId "configuration" -properties $iDNSProperties -force -credential $Credential    
+    New-NetworkControllerIDnsServerConfiguration -connectionuri $uri -ResourceId "IDnsServerConfiguration" `
+        -properties $iDNSProperties -force -credential $Credential -passInerException    
 }
 
 
