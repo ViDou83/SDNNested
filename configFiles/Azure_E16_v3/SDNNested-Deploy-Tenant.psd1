@@ -20,6 +20,8 @@
 
     RestURI = "https://NORTHBOUNDAPI.SDN.LAB"
 
+    GwPool =  "MyGwPool"
+
     Tenants              = 
     @(
         @{

@@ -688,26 +688,56 @@ function Add-SDNNestedADDSDomainController()
     Write-SDNNestedLog  "<-- Promote vm $env:COMPUTERNAME as DC to domain $($params.DomainName)"
 }
 
-function Clear-DcDnsConfig()
+function Set-DnsConfigBindings()
 {
     param(
-        [hashtable] $dc,
-        [String] $MgmtIp,
+        [String] $server,
+        [String] $ListeningIP,
         [pscredential] $credential
     )
 
-    Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings" 
 
-    Invoke-Command -VMName $dc.computername -Credential $credential {         
-        $MgmtIp = (Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4).IPAddress
+    Invoke-Command -VMName $server -Credential $credential { 
+        $ListeningIP = $args[0] 
+
+        Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings on $env:computername" 
+        $AdaptersToDisable=Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -NotMatch $ListeningIP
         #Removing DNS registration on 2nd adapter
+        
         Write-Host  "Configuring DNS server to only listening on mgmt NIC"   
-        Get-NetAdapter "Ethernet *" | Set-DnsClient -RegisterThisConnectionsAddress $false
-        dnscmd /ResetListenAddresses $MgmtIp | Out-Null
+        $AdaptersToDisable | Set-DnsClient -RegisterThisConnectionsAddress $false
+        dnscmd /ResetListenAddresses $ListeningIP | Out-Null
+        
         Restart-Service DNS
         sleep 5
         ipconfig /registerdns | Out-Null
+    } -ArgumentList $ListeningIP
+}
+
+function Add-DnsForwarders
+{
+    param (
+        [String] $server,
+        [Boolean] $InheritFromHypvHost,
+        [pscredential] $credential
+    )
+    
+    Write-SDNNestedLog  "Adding DNS Forwarder on $server"
+    $DNS=@()
+    $DNS+="8.8.8.8"
+    if ( $InheritFromHypvHost )
+    {
+        $DNS+=(Get-DnsClientServerAddress -AddressFamily IPv4 | ? InterfaceAlias -Match ^Ethernet).ServerAddresses
     }
+    invoke-command -VMName $server -Credential $credential {
+        $DNS=$args
+        foreach($addr in $DNS)
+        {
+            Add-DnsServerForwarder -IPAddress $addr 
+        }
+        Set-DnsServerForwarder -UseRootHint $false -Timeout 5
+    } -ArgumentList $DNS
+      
 }
 function Add-VMDataDisk() {
     param(
@@ -1439,13 +1469,14 @@ function New-SDNiDNSConfiguration()
 
 }
 
-function New-SDNNestedDhcpServerOnMgmt()
+function New-DhcpServer()
 {
     param (
         [string] $VMName,
         [string] $DNSfqdn,
         [string] $DNSMgmt,
         [string] $Subnet,
+        [string] $router,
         [PSCredential] $credential
     )
 
@@ -1453,15 +1484,18 @@ function New-SDNNestedDhcpServerOnMgmt()
         $DNSfqdn  = $args[0]
         $DNSMgmt  = $args[1]
         $Subnet   = $args[2]
+        $router   = $args[3]
 
         Write-Host  "Configuring DHCP Server on $ENV:COMPUTERNAME"
 
         netsh dhcp add securitygroups
         Restart-Service dhcpserver
-         
-        Add-DhcpServerInDC -DnsName $DNSfqdn -IPAddress $DNSMgmt
-        Get-DhcpServerInDC
-
+        if ( $env:USERDOMAIN -ne $env:computername )
+        {
+            Add-DhcpServerInDC -DnsName $DNSfqdn -IPAddress $DNSMgmt
+            Get-DhcpServerInDC
+        }
+        
         Set-ItemProperty -Path registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager\Roles\12 -Name ConfigurationState -Value 2
         
         Set-DhcpServerv4DnsSetting -DynamicUpdates "Never"
@@ -1485,7 +1519,8 @@ function New-SDNNestedDhcpServerOnMgmt()
             Set-DhcpServerv4Binding -BindingState $True -InterfaceAlias $IntAlias
         }
         Add-DhcpServerv4Scope -name "MGMT" -StartRange $StartRange -EndRange $EndRange -SubnetMask $Mask -State Active
-        Set-DhcpServerv4OptionValue -OptionID 3 -Value $DNSMgmt -ScopeID $Net
+
+        Set-DhcpServerv4OptionValue -OptionID 3 -Value $router -ScopeID $Net
         Set-DhcpServerv4OptionValue -OptionID 6 -Value $DNSMgmt -ScopeID $Net 
-    } -ArgumentList $DNSfqdn, $DNSMgmt, $Subnet
+    } -ArgumentList $DNSfqdn, $DNSMgmt, $Subnet, $router
 }   

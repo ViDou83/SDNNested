@@ -11,7 +11,7 @@
     DomainFQDN           = "SDN.LAB"
     #IP PLAN
     ManagementSubnet     = "10.184.108.0/24"
-    ManagementGateway    = "10.184.108.1"
+    ManagementGateway    = "10.184.108.254"
     ManagementDNS        = @("10.184.108.1")
     ManagementVLANID     = 7
     #Domain users infos
@@ -36,7 +36,7 @@
     VMHostvNICs     = 
     @( 
         @{ SwitchName="SDN"; Name = "SdnMgmt"; IPAddress = '10.184.108.50/24'; Gateway = ''; DNS = @("10.184.108.1") ; VLANID = 7; 
-                NetRoute = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.1"; }
+                NetRoute = @{ Destination =   "41.40.40.0/27"; NextHop = "10.184.108.254"; }
         };
         @{ SwitchName="SDN"; Name = "SdnPa"; IPAddress = '10.10.56.50/23'; Gateway = ''; DNS = @("") ; VLANID = 11; NetRoute =""; };
         #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
@@ -51,7 +51,7 @@
             VMMemory     = 2GB;
             VMProcessorCount = 2;
             NICs         = @( 
-                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = ''; DNS = '' ; VLANID = 7 },                #Second in case if ToR is going to be deployed 
+                @{ Name = "Ethernet"; IPAddress = '10.184.108.1/24'; Gateway = '10.184.108.254'; DNS = '' ; VLANID = 7 },                #Second in case if ToR is going to be deployed 
                 #Second in case if ToR is going to be deployed 
                 @{ Name = "Ethernet 2"; IPAddress = '10.10.56.1/24'; Gateway = ''; DNS = '' ; VLANID = 11 };
                 #Third regarding Internet access on SDN Stack to uncomment if  ShareHostInternet = $true
@@ -66,6 +66,7 @@
             ComputerName = 'SDN-HOST01'; 
             VMMemory     = 52GB;
             VMProcessorCount = 8;
+            VMDiskSize = 384GB; #Will be ignore is SDNonS2D is $true
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.2/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   
@@ -74,6 +75,7 @@
             ComputerName = 'SDN-HOST02'; 
             VMMemory     = 52GB;
             VMProcessorCount = 8;
+            VMDiskSize = 384GB; #Will be ignore is SDNonS2D is $true
             NICs         = @( 
                 @{ Name = "Ethernet"; IPAddress = '10.184.108.3/24'; Gateway = '10.184.108.1'; DNS = @("10.184.108.1") ; VLANID = 7 };
             )   

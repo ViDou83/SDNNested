@@ -82,14 +82,14 @@ foreach ($Tenant in $configdata.Tenants)
     $vnet = New-TenantVirtualNetwork $uri $Tenant $HNVProviderLogicalNetwork 
     $vnet  
 
-    $gwpool = Get-SDNGatewayPool $uri 
+    $gwpool = Get-SDNGatewayPool $uri
 
     foreach ($Gw in $configdata.TenantvGWs) 
     {    
         if ( $Gw.Tenant -eq $Tenant.Name) 
         { 
 
-            $VirtualGW = New-SDNVirtualGateway $uri "$($Gw.VirtualGwName)" $Tenant $vnet "vGW" $gwPool $HNVProviderLogicalNetwork
+            $VirtualGW = New-SDNVirtualGateway $uri "$($Gw.VirtualGwName)" $Tenant $vnet "vGW" $gwpool $HNVProviderLogicalNetwork
 
             $VirtualGW
 
@@ -711,16 +711,18 @@ foreach( $Tenant in $configdata.Tenants)
                 if ( $ConnectionType -eq "L3" )
                 {
                     $GW = $vgw.Properties.NetworkConnections.properties.IPAddresses[0].IPAddress
-                    Write-Host "Add NEtRoute to PeerIp=$BgpPeerIp on $env:COMPUTERNAME"
+                    Write-Host "Add NEtRoute to PeerIp=$BgpPeerIp NExthop=$GW Int=$Intalias on $env:COMPUTERNAME"
                     New-NetRoute -DestinationPrefix "$BgpPeerIp/32" -NextHop $GW -interfaceAlias $IntAlias | Out-Null
                 }
+                <#
                 else
                 {
                     $LocalIp=(Get-NetAdapter $IntAlias | Get-NetIpAddress -AddressFamily IPv4).IPAddress    
                     $GW = $LocalIp.split(".")[0]+"."+$LocalIp.split(".")[1]+"."+$LocalIp.split(".")[2]+".1"
+                    Write-Host "Add NEtRoute to PeerIp=$BgpPeerIp NExthop=$GW Int=$Intalias on $env:COMPUTERNAME"
                     New-NetRoute -DestinationPrefix "$DestinationPeer/32" -NextHop $GW -interfaceAlias $IntAlias | Out-Null
                 }
-
+                #>
                 $BgpAdapter="BGP_LocalPeer"
                 if ( !(Get-NetAdapter $BgpAdapter -ea SilentlyContinue) )
                 {
@@ -791,7 +793,7 @@ $LocalAdminDomainUserDomain = $configdata.LocalAdminDomainUser.Split("\")[0]
 $LocalAdminDomainUserName = $configdata.LocalAdminDomainUser.Split("\")[1]
 
 New-SDNiDNSConfiguration ($uri -replace "https://","") $LocalAdminDomainUserDomain $LocalAdminDomainUserName `
-    $DomainJoinPassword $configdata.ManagementDNS "sdn-cloud.net" $DomainJoinCredential 
+    $DomainJoinPassword $($env:LOGONSERVER -replace "\\","") "sdn-cloud.net" $DomainJoinCredential 
 
 $regfile=(pwd).path+"\utils\iDNS.reg"
 
@@ -801,5 +803,4 @@ invoke-command $configdata.HYPV -credential $DomainJoinCredential {
     Write-Host "Pushing DNSProxy config to registry on $env:computername"
     cmd.exe /c "reg import $regfile 2>&1"
     restart-service NcHostAgent -Force
-    restart-service SlbHostAgent
 } -Argumentlist $regfile 

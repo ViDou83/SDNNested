@@ -196,29 +196,20 @@ foreach ( $dc in $configdata.DCs)
         {
             Add-SDNNestedADDSDomainController $dc.Computername $LocalAdminCredential $configdata.DomainFQDN
         }
+        WaitLocalVMisBooted $dc.computername $DomainJoinCredential
+
         Write-SDNNestedLog  "Configuring VLAN VLANID=$($dc.NICs[0].VLANID) VM=$($dc.computername)"
         Get-VMNetworkAdapter -VMName $dc.computername | Set-VMNetworkAdapterVlan -Access -VlanId $dc.NICs[0].VLANID
 
         #Fixing DNS config if DCs has more than vNIC
         if( ($dc.Nics).count -gt 1 )
         {
-            Clear-DcDnsConfig $dc $MgmtIp $DomainJoinCredential
+            Set-DnsConfigBindings $dc.computername $MgmtIp $DomainJoinCredential 
         }
         #Set DNS forwarder if needed 
         if ( $configdata.ShareHostInternet )
         {
-            Write-SDNNestedLog  "Adding DNS Forwarder on $($dc.computername)"
-            $DNS=@()
-            $DNS+="8.8.8.8"
-            $DNS+=(Get-DnsClientServerAddress -AddressFamily IPv4 | ? InterfaceAlias -Match ^Ethernet).ServerAddresses
-            invoke-command -VMName $dc.Computername -Credential $DomainJoinCredential {
-                $DNS=$args
-                foreach($addr in $DNS)
-                {
-                    Add-DnsServerForwarder -IPAddress $addr 
-                }
-                Set-DnsServerForwarder -UseRootHint $false -Timeout 5
-            } -ArgumentList $DNS
+            Add-DnsForwarders $dc.computername $true $DomainJoinCredential
         }
     }
     else{   Write-SDNNestedLog  "VM=$($vm.Name) already exist - Skipping deployment" }
@@ -479,8 +470,8 @@ if ( ! ( $result ) )
         #Add Dhcp 
         Add-WindowsFeatureOnVM $ToR.ComputerName $credential DHCP
         #
-        New-SDNNestedDhcpServerOnMgmt $ToR.ComputerName $configdata.DCs[0].ComputerName `
-            $configdata.ManagementDNS $configdata.ManagementSubnet $credential
+        New-DhcpServer $ToR.ComputerName $configdata.DCs[0].ComputerName `
+            $configdata.ManagementDNS $configdata.ManagementSubnet $configdata.ManagementGateway $credential
     }
 }
 else{Write-SDNNestedLog  "ToR router already configured - Skipping deployment" }
