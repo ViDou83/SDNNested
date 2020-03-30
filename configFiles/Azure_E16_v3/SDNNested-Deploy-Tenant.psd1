@@ -20,8 +20,6 @@
 
     RestURI = "https://NORTHBOUNDAPI.SDN.LAB"
 
-    GwPool =  "MyGwPool"
-
     Tenants              = 
     @(
         @{
@@ -83,12 +81,10 @@
         }
     )
 
-    #This block must be the same the one defined on SDNNested-Infra.psd1 to have everyhting auto-configured 
     TenantvGWs           =
     @(
         @{
             Tenant                      = "Contoso"
-            Capacity                    = 10000 #In KBytes/s
             Type                        = 'L3'
             VirtualGwName               = 'Contoso_vGW'
             LogicalNetworkName          = "Contoso_L3_Interco_Network"
@@ -110,7 +106,6 @@
         },
         @{
             Tenant              = "Fabrikam"
-            Capacity            = 10000 #In KBytes/s   
             Type                = 'IPSEC'
             VirtualGwName       = 'Fabrikam_vGW'
             RouteDstPrefix      = @( "192.168.254.0/24", "4.4.4.4/32" )
@@ -128,7 +123,6 @@
         },
         @{
             Tenant              = "Acme"
-            Capacity            = 10000 #In KBytes/s
             Type                = 'GRE'
             VirtualGwName       = 'Acme_vGW'
             RouteDstPrefix      = @( "10.16.254.0/24", "6.6.6.6/32" )
@@ -145,7 +139,6 @@
         }
     )
     
-
     TenantVMs            = 
     @(
         @{

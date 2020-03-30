@@ -900,7 +900,6 @@ function New-TenantVirtualNetwork()
         $vsubnet.Properties.AddressPrefix = $subnet.AddressPrefix   
         $vnetproperties.Subnets += $vsubnet  
     }
-
     $vnet = New-NetworkControllerVirtualNetwork -ResourceId $Tenant.TenantVirtualNetworkName -ConnectionUri $uri `
         -Properties $vnetproperties -Force -PassInnerException
 
@@ -954,6 +953,7 @@ function New-SDNVirtualGatewayNetworkConnections()
     param (
         [String] $uri,
         [hashtable] $gw,
+        [int] $TotalCapacity,
         [string] $VirtualGatewayId
     )
     
@@ -992,8 +992,8 @@ function New-SDNVirtualGatewayNetworkConnections()
 
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType = $gw.Type
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity 
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity / 2
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity / 2
 
         # GRE specific configuration (leave blank for L3)  
         $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
@@ -1014,8 +1014,8 @@ function New-SDNVirtualGatewayNetworkConnections()
     {
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType = $gw.type
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity   
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity   
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity / 5
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity / 5
 
         # Update specific properties depending on the Connection Type  
         $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
@@ -1036,8 +1036,8 @@ function New-SDNVirtualGatewayNetworkConnections()
 
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType =  $gw.type   
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.Capacity   
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.Capacity   
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity * $(3/20) 
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity * $(3/20)
 
         # Update specific properties depending on the Connection Type  
         $nwConnectionProperties.IpSecConfiguration = New-Object Microsoft.Windows.NetworkController.IpSecConfiguration   

@@ -47,6 +47,4 @@
     #AZFileShare                 = "\\myshare.file.core.windows.net\sndtemplate"
     #AZFileUser                  = "Azure\myuser"
     #AZFilePwd                   = "MyVeryComplexPassword"
-    AZFileShare                 = "\\rgazfrancediag.file.core.windows.net\sndtemplate"
-    AZFileUser                  = "Azure\rgazfrancediag"
 }

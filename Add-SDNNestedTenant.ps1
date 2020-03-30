@@ -78,8 +78,11 @@ $HNVProviderLogicalNetwork = Get-HNVProviderLogicalNetwork $uri
 
 foreach ($Tenant in $configdata.Tenants) 
 {
-   
-    $vnet = New-TenantVirtualNetwork $uri $Tenant $HNVProviderLogicalNetwork 
+    $vnet = Get-NetworkControllerVirtualNetwork -ConnectionUri $uri -ResourceId $Tenant.TenantVirtualNetworkName
+    if ( ! $vnet )
+    {
+        $vnet = New-TenantVirtualNetwork $uri $Tenant $HNVProviderLogicalNetwork 
+    }
     $vnet  
 
     $gwpool = Get-SDNGatewayPool $uri
@@ -88,12 +91,17 @@ foreach ($Tenant in $configdata.Tenants)
     {    
         if ( $Gw.Tenant -eq $Tenant.Name) 
         { 
-
+            $VirtualGW = Get-NetworkControllerVirtualGateway -ConnectionUri $uri -ResourceId $Gw.VirtualGwName
+            if ( $VirtualGW )
+            {
+                Write-SDNNestedLog "$($Gw.VirtualGwName) is already existing so delete it before!"
+                Remove-NetworkControllerVirtualGateway -ConnectionUri $uri -ResourceId $Gw.VirtualGwName -force
+            }
             $VirtualGW = New-SDNVirtualGateway $uri "$($Gw.VirtualGwName)" $Tenant $vnet "vGW" $gwpool $HNVProviderLogicalNetwork
 
             $VirtualGW
 
-            New-SDNVirtualGatewayNetworkConnections $uri $gw $virtualGW.ResourceId
+            New-SDNVirtualGatewayNetworkConnections $uri $gw $gwpool.properties.GatewayCapacityKiloBitsPerSecond $virtualGW.ResourceId
 
             $bgpRouterId = New-SDNVirtualGatewayBgpRouter $uri $gw $virtualGW.ResourceId
 
@@ -604,6 +612,10 @@ foreach( $Tenant in $configdata.Tenants)
             Install-Module -Name LoopbackAdapter -MinimumVersion 1.2.0.0 -Force | Out-Null
             Import-Module -Name LoopbackAdapter 
 
+            $run = (Get-Service RemoteAccess).status
+            if ( $run -ne "Running") { Start-Service RemoteAccess }
+            Set-Service RemoteAccess -StartupType Automatic
+
             $tunnelMode = $false                   
             if ( $ConnectionType -eq "L3" )
             {
@@ -631,10 +643,6 @@ foreach( $Tenant in $configdata.Tenants)
                     Install-RemoteAccess -VpnType $VpnType
                 }  
             }
-
-            $run = (Get-Service RemoteAccess).status
-            if ( $run -ne "Running") { Start-Service RemoteAccess }
-            Set-Service RemoteAccess -StartupType Automatic
 
             #Configuring GW
             if ( $tunnelMode ) 
@@ -803,4 +811,5 @@ invoke-command $configdata.HYPV -credential $DomainJoinCredential {
     Write-Host "Pushing DNSProxy config to registry on $env:computername"
     cmd.exe /c "reg import $regfile 2>&1"
     restart-service NcHostAgent -Force
+    restart-service SlbHostAgent
 } -Argumentlist $regfile 

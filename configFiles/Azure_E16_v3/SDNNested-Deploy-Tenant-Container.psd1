@@ -81,12 +81,10 @@
         }
     )
 
-    #This block must be the same the one defined on SDNNested-Infra.psd1 to have everyhting auto-configured 
     TenantvGWs           =
     @(
         @{
             Tenant                      = "Contoso"
-            Capacity                    = 10000 #In KBytes/s
             Type                        = 'L3'
             VirtualGwName               = 'Contoso_vGW'
             LogicalNetworkName          = "Contoso_L3_Interco_Network"
@@ -108,7 +106,6 @@
         },
         @{
             Tenant              = "Fabrikam"
-            Capacity            = 10000 #In KBytes/s   
             Type                = 'IPSEC'
             VirtualGwName       = 'Fabrikam_vGW'
             RouteDstPrefix      = @( "192.168.254.0/24", "4.4.4.4/32" )
@@ -126,7 +123,6 @@
         },
         @{
             Tenant              = "Acme"
-            Capacity            = 10000 #In KBytes/s
             Type                = 'GRE'
             VirtualGwName       = 'Acme_vGW'
             RouteDstPrefix      = @( "10.16.254.0/24", "6.6.6.6/32" )
@@ -184,7 +180,7 @@
             NICs         = @( 
                 @{ 
                     Name = "Ethernet"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                    DNS = @("") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
         },
@@ -200,7 +196,7 @@
             NICs         = @( 
                 @{ 
                     Name = "Ethernet"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
-                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                    DNS = @("") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )
         },
@@ -216,7 +212,7 @@
             NICs         = @( 
                 @{ 
                     Name = "Ethernet"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                    DNS = @("") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
         },
@@ -232,7 +228,7 @@
             NICs         = @( 
                 @{ 
                     Name = "Ethernet"; IPAddress = '172.16.1.10/24'; Gateway = '172.16.1.1'; 
-                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                    DNS = @("") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )
         },
@@ -248,13 +244,12 @@
             NICs         = @( 
                 @{ 
                     Name = "Ethernet"; IPAddress = '172.16.1.11/24'; Gateway = '172.16.1.1'; 
-                    DNS = @("172.16.1.53") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
+                    DNS = @("") ; MACAddress = '00-00-00-00-00-00'; VLANID = 0 
                 };
             )   
         }
     )
 
-    #SLB configuration
     SlbVIPs                 =
     @(
         @{

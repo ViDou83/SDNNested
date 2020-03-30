@@ -27,6 +27,27 @@
     #IMPORTANT VMs will be stored on S2D storage pool (bad perf with NESTED virtualization)
     S2DEnabled          = $False
 
+    # If SDNonS2D          = $False 
+    # then the S2DDiskSize and S2DDiskNumber will be ignored
+    # otherwise disk will be created and used to store VMs
+    S2DDiskSize          = 128GB
+    S2DDiskNumber        = 3
+    S2DClusterIP         = "10.184.108.4"
+    # Please use this name to add the cluster to WAC (eg. SDNFABRIC.SDN.LAB)
+    S2DClusterName       = "SDNFABRIC"
+   
+    #Product Key of VMs
+    ProductKey           = 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
+
+    # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
+    SwitchName           = "SDN"
+
+    # Amount of Memory and number of Processors to assign to VMs that are created.
+    # If not specified a default of 8 procs and 8GB RAM are used.
+    # Can be overloaded at VMs level
+    VMMemory             = 2GB
+    VMProcessorCount     = 2
+
     #If you want SDN VM's getting Internet access from VMHOST
     ShareHostInternet = $true
 
@@ -144,28 +165,6 @@
             )
         }
     )
-
-
-    # If SDNonS2D          = $False 
-    # then the S2DDiskSize and S2DDiskNumber will be ignored
-    # otherwise disk will be created and used to store VMs
-    S2DDiskSize          = 128GB
-    S2DDiskNumber        = 3
-    S2DClusterIP         = "10.184.108.4"
-    # Please use this name to add the cluster to WAC (eg. SDNFABRIC.SDN.LAB)
-    S2DClusterName       = "SDNFABRIC"
-   
-    #Product Key of VMs
-    ProductKey           = 'T99NG-BPP9T-2FX7V-TX9DP-8XFB4'
-
-    # Switch name is only required if more than one virtual switch exists on the Hyper-V hosts.
-    SwitchName           = "SDN"
-
-    # Amount of Memory and number of Processors to assign to VMs that are created.
-    # If not specified a default of 8 procs and 8GB RAM are used.
-    # Can be overloaded at VMs level
-    VMMemory             = 2GB
-    VMProcessorCount     = 2
  
     # If Locale and Timezone are not specified the local time zone of the deployment machine is used.
     # Locale           = ''
