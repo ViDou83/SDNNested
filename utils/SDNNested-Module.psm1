@@ -696,11 +696,11 @@ function Set-DnsConfigBindings()
         [pscredential] $credential
     )
 
+    Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings on $server" 
 
     Invoke-Command -VMName $server -Credential $credential { 
         $ListeningIP = $args[0] 
 
-        Write-SDNNestedLog "Removing 2nd NIC from DNS zone and DNS server bindings on $env:computername" 
         $AdaptersToDisable=Get-NetAdapter Ethernet | Get-NetIPAddress -AddressFamily IPv4 | ? IPAddress -NotMatch $ListeningIP
         #Removing DNS registration on 2nd adapter
         
