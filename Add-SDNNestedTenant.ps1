@@ -78,7 +78,7 @@ $HNVProviderLogicalNetwork = Get-HNVProviderLogicalNetwork $uri
 
 foreach ($Tenant in $configdata.Tenants) 
 {
-    $vnet = Get-NetworkControllerVirtualNetwork -ConnectionUri $uri -ResourceId $Tenant.TenantVirtualNetworkName
+    $vnet = Get-NetworkControllerVirtualNetwork -ConnectionUri $uri | ? ResourceId -eq $Tenant.TenantVirtualNetworkName 
     if ( ! $vnet )
     {
         $vnet = New-TenantVirtualNetwork $uri $Tenant $HNVProviderLogicalNetwork 
@@ -91,7 +91,7 @@ foreach ($Tenant in $configdata.Tenants)
     {    
         if ( $Gw.Tenant -eq $Tenant.Name) 
         { 
-            $VirtualGW = Get-NetworkControllerVirtualGateway -ConnectionUri $uri -ResourceId $Gw.VirtualGwName
+            $VirtualGW = Get-NetworkControllerVirtualGateway -ConnectionUri $uri | ? ResourceId -eq $Gw.VirtualGwName
             if ( $VirtualGW )
             {
                 Write-SDNNestedLog "$($Gw.VirtualGwName) is already existing so delete it before!"
@@ -101,7 +101,7 @@ foreach ($Tenant in $configdata.Tenants)
 
             $VirtualGW
 
-            New-SDNVirtualGatewayNetworkConnections $uri $gw $gwpool.properties.GatewayCapacityKiloBitsPerSecond $virtualGW.ResourceId
+            New-SDNVirtualGatewayNetworkConnections $uri $gw $virtualGW.ResourceId
 
             $bgpRouterId = New-SDNVirtualGatewayBgpRouter $uri $gw $virtualGW.ResourceId
 
@@ -813,3 +813,9 @@ invoke-command $configdata.HYPV -credential $DomainJoinCredential {
     restart-service NcHostAgent -Force
     restart-service SlbHostAgent
 } -Argumentlist $regfile 
+
+foreach ($TenantVM in $configdata.TenantVMs) 
+{
+    Write-SDNNestedLog "Restarting $TenantVM"
+    Get-VM -ComputerName $configdata.HYPV $TenantVM | Restart-VM -force
+}

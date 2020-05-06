@@ -70,6 +70,7 @@
         @{
             Tenant                      = "Contoso"
             Type                        = 'L3'
+            Capacity                    = 100000 
             VirtualGwName               = 'Contoso_vGW'
             LogicalNetworkName          = "Contoso_L3_Interco_Network"
             LogicalSunetName            = "Contoso_L3_Interco_Subnet"
@@ -91,6 +92,7 @@
         <#@{
             Tenant              = "Fabrikam"
             Type                = 'GRE'
+            Capacity            = 100000 
             VirtualGwName       = 'Fabrikam_vGW'
             RouteDstPrefix      = @( "172.16.254.0/24", "2.2.2.2/32" )
             PSK                 = "1234"
@@ -107,6 +109,7 @@
         @{
             Tenant              = "Fabrikam"
             Type                = 'IPSEC'
+            Capacity            = 100000 
             VirtualGwName       = 'Fabrikam_vGW'
             RouteDstPrefix      = @( "192.168.254.0/24", "4.4.4.4/32" )
             PSK                 = "Password1"

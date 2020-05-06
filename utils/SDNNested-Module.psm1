@@ -932,6 +932,7 @@ function New-SDNVirtualGateway()
         if (  $Vnet.Properties.Subnets[$i] | ? ResourceId -Match $SubnetNameRegex )
         {
             $VirtualGWProperties.GatewaySubnets  +=  $Vnet.Properties.Subnets[$i]
+            #$Vnet.Properties.Subnets[$i]
         }
     }
     
@@ -943,7 +944,7 @@ function New-SDNVirtualGateway()
 
     # Add the new Virtual Gateway for tenant   
     $virtualGW = New-NetworkControllerVirtualGateway -ConnectionUri $uri -ResourceId $VirtualGatewayResourceId `
-        -Properties $VirtualGWProperties -Force 
+        -Properties $VirtualGWProperties -PassInnerException -Force 
 
     return $virtualGW
 }
@@ -953,7 +954,6 @@ function New-SDNVirtualGatewayNetworkConnections()
     param (
         [String] $uri,
         [hashtable] $gw,
-        [int] $TotalCapacity,
         [string] $VirtualGatewayId
     )
     
@@ -992,8 +992,9 @@ function New-SDNVirtualGatewayNetworkConnections()
 
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType = $gw.Type
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity / 2
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity / 2
+
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.capacity
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.capacity
 
         # GRE specific configuration (leave blank for L3)  
         $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
@@ -1014,8 +1015,8 @@ function New-SDNVirtualGatewayNetworkConnections()
     {
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType = $gw.type
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity / 5
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity / 5
+        $nwConnectionProperties.OutboundKiloBitsPerSecond =  $gw.capacity
+        $nwConnectionProperties.InboundKiloBitsPerSecond =  $gw.capacity
 
         # Update specific properties depending on the Connection Type  
         $nwConnectionProperties.GreConfiguration = New-Object Microsoft.Windows.NetworkController.GreConfiguration   
@@ -1036,8 +1037,8 @@ function New-SDNVirtualGatewayNetworkConnections()
 
         # Update the common object properties  
         $nwConnectionProperties.ConnectionType =  $gw.type   
-        $nwConnectionProperties.OutboundKiloBitsPerSecond = $TotalCapacity * $(3/20) 
-        $nwConnectionProperties.InboundKiloBitsPerSecond = $TotalCapacity * $(3/20)
+        $nwConnectionProperties.OutboundKiloBitsPerSecond = $gw.capacity
+        $nwConnectionProperties.InboundKiloBitsPerSecond = $gw.capacity 
 
         # Update specific properties depending on the Connection Type  
         $nwConnectionProperties.IpSecConfiguration = New-Object Microsoft.Windows.NetworkController.IpSecConfiguration   
