@@ -1,5 +1,5 @@
 # Purpose 
-SDNNested is a collection of Powershell Scrits that help to automate the deployment of a Microsoft SDNv2 LAB on one single machine (Nested LAB). 
+SDNNested is a collection of Powershell Scrits that helps to automate the deployment of a Microsoft SDNv2 LAB on one single machine (Nested LAB). 
 
 https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-networking
  
@@ -9,8 +9,8 @@ https://docs.microsoft.com/en-us/windows-server/networking/sdn/software-defined-
 # General requirement
 *   HYPV role is required (Nested Virtualization will be use) 
 *   A minimum of 64GB of RAM (use config file under .\configfiles\Azure_E8_v3 )
-*   A minimum of 1TB of storage to store VMs
-    *   From configfiles examples, the Drive is F: but it can be changed.
+*   A minimum of 1TB of storage to store VMs is recommended
+    *   From configfiles examples, the Drive is F: but it can be changed. 
 *   MAchine's processor(s) must support Nested Virtualization  :
     *   see https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization
     
@@ -19,40 +19,58 @@ IMPORTANT: To be sucessful, it is recommended to understand config files structu
 
 You can either use provided config files or simply copy one folder and rename it based on your need (in that case config files structure needs to be well understood).
 
-VM acting as Hypv Server (can be a Azure VM) :
+
+VM acting as Hypv Server (can be an Azure VM or a physical server) :
 * One DC acting as ToR Router (router between SDN Stack and outside)
     * TOR router can be deployed to a dedicated VM and more DCs can be added (see Azure_E16_v3\SDNNested-Deploy-Infra.psd1 config file ) 
 * Two Hypv HOSTs where SDN stack will be deployed (with SDNExpress script)
     * Could add more HYPV Hosts, just need to customize SDNNested-Deploy-Infra.psd1 config file
     * Cluster with S2D Disk pool is needed to manage SDN Stack with WAC)
-        * Set SDNonS2D = $true into the SDNNested-Deploy-Infra.psd1 if you want to store VMs into the ClusterStorage (performance issue in a Nested env). By default, it is set to $false.
-* Two tenants "physical" Gateways (Contoso GW will use L3 and Fabrikam GRE tunneling) to simulate remote tenant network connectivity (outside the SDN Stack)
+        * Set SDNonS2D = $true into the SDNNested-Deploy-Infra.psd1 if you want to store VMs into the ClusterStorage (performance issue/penalty in a Nested env). By default, it is set to $false.
+* Two Tenants "external" Gateways (Contoso GW will use L3 and Fabrikam IPSEC tunneling) to simulate remote tenant network connectivity with the SDN LAB
     *  Could add more or less Tenants, just need to customize SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config file 
 
 On the SDN-HOSTs :
 * A Network controller ServiceFabric Cluster (with minimum of 3 nodes ) or a standalone (see SDNExpress-Config.psd1) 
+  * Only one node deployed by default
 * Two multi-tenant Gateways
 * Two MUXes
 * Tenant VMs - based on the deployement config files used (see SDNNested-Deploy-Tenant.psd1 or SDNNested-Deploy-Tenant-Container.psd1 config files )
-    * Tenant VM will run a IIS-Website, from the LocalMAchine browser reach http://VIP and the WebPage will indicate to which tenant VM (DIP) the SLB is routing the request
-    * Tenant ContainerHost VM will run a IIS-Website container image, from the LocalMAchine browser reach http://VIP and the WebPage will indicate to which tenant VM (DIP) the SLB is routing the request
+    * Tenant VM will run a IIS-Website, from the LocalMAchine browser reach http://VIP and the WebPage will shows to which tenant VM (DIP) the SLB has been delivred HTTP the request
+    * Tenant ContainerHost's VM will run a IIS-Website container image, from the LocalMAchine browser reach http://VIP and the WebPage will indicate to which tenant VM (DIP) the SLB has been routed the HTTP request
     *   In the Container case, SLB is forwarding the packet to the ContainerHost Tenant VM (DIP), then inside the ContainerHost a second LB is configured to load-balanced to running containers.               
 
-IP subnets and VLAN (can be changed):
+IP subnets and VLAN ID(can be changed):
 - MGMT 10.184.108.0/24 - VLAN 7
 - PROVIDER 10.10.56.0/23 - VLAN 11
 - CONTOSO L3 INTERCO 10.127.134.0/25 - VLAN 1001
+- INTERNET vSwitch 192.168.1.0/24 - VLAN 2
 - CONTOSO and FABRIKAM SUBNET (voluntary the same to demonstrate isolation): 172.16.1.0/24 
     *  Contoso-testVM01 - 172.16.1.10/24
-    *  Contoso-testVM02 - 172.16.1.10/24
+    *  Contoso-testVM02 - 172.16.1.11/24
     *  Fabrikam-testVM01 - 172.16.1.10/24
-    *  Fabrikam-testVM02 - 172.16.1.10/24
+    *  Fabrikam-testVM02 - 172.16.1.11/24
 - Public VIP which can be reached from AzVM 
     * 41.40.40.8 -> CONTOSO
     * 41.40.40.9 -> FABRIKAM
-
-# USAGE
-PREREQUISITES : You must have VHDX images located inside the folder where the VM will be stored 
+- Outbound NAT :
+    * 41.40.40.18 -> CONTOSO
+    * 41.40.40.19 -> FABRIKAM
+- iDNS zones for Tenants :
+    * VNET-Tenant-Fabrikam.sdn-cloud.net 
+    * VNET-Tenant-Contoso.sdn-cloud.net
+- All SDN VMs has Internet Access through Hypv NAT
+- BGP peering towards external GW (FABRIKAM-GW01 and CONTOSO-GW01):
+    * L3 netconnection (VLAN 1001) for CONTOSO 
+    * IPSEC tunnel (VIP 41.40.40.1) for FABRIKAM
+- Wireshark or another Net Analyzer can used on the Azure VM (or your main Hypv host) to sniff network inside the SDN stack (port mirroring - select vNIC *Mirror*)
+    * That helps to visualize a little bit the traffic flow (encapsulation and so on).
+    * Packets from Hypv -> VFP -> DIP / tenants VMs cannot be seen using this method.
+- Management of SDN stack:
+    * Windows Admin Center WAS can be  installed (https://localhost) or use the SDNNested Module
+    
+# Deployment / USAGE 
+PREREQUISITES : You must have VHDX syspreded images located inside the folder where the VM will be stored 
 Ex: F:\VMs\Template\
 
 PS C:\Users\vidou> dir F:\VMs\Template\
