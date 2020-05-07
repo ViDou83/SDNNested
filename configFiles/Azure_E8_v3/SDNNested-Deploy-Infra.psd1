@@ -134,9 +134,7 @@
             ComputerName = 'SDN-DC01'; 
 
             InternetNAT         = $true
-            InsideNAT           = "10.10.56.1"
-            OutsideNAT          = "192.168.1.254"
-            
+  
             NICs    = 
             @( 
                 @{ Name = "Ethernet"; IPAddress = '10.10.56.1/23'; Gateway = ''; DNS = '' ; VLANID = 11 };
