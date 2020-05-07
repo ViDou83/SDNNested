@@ -40,7 +40,7 @@ function WaitVMs()
         $cpt++
         if ( $cpt -eq $VMs.Count) { break;}
     }   
-    Sleep 30
+    Sleep 5
 }
 
 function StartAllVMs()
@@ -243,21 +243,24 @@ elseif( $RunningMode -eq "Init" )
 
                 $NCThumbprint   =   $NetworkControllerInfo.ServerCertificate.thumbprint
 
-                Set-Item -Path WSMan:\localhost\Service\Auth\Certificate
                 $WSManClientCertificate=Get-childItem -Path WSMan:\localhost\ClientCertificate
 
                 $WSManClientCertificate.keys | ForEach-Object{ 
                     if ( $_ -notmatch $NCThumbprint)
                     {
+                        Set-Item -Path WSMan:\localhost\Service\Auth\Certificate $true
+
+                        $Mythumbprint = `
+                            (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
                         New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCThumbprint -Credential $cred -force
+                        get-childitem -Path WSMan:\localhost\Listener | Where-Object Keys -Match HTTPS | Remove-Item -ForceY
+                        New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
                     }
                 }
-
+                Get-Netfirewallrule | Where-Object Name -Match WINRM-HTTP-In-TCP |  Set-NetFirewallRule -LocalPort 5985,5986
             } -ArgumentList $LocalAdmin,$NetworkControllerInfo
         }
     }
-
-    Sleep 300
 
     Write-Host -ForegroundColor yellow "SDN creds have been cached so you might be able to add SDN-HOST thouhg Hypv Mgmt Console
         or reach SDN VMs via PSSession or in WAC w/o being prompted. Condition is to user FQDN notation."

@@ -498,7 +498,7 @@ function New-ToRRouter()
             }
         }
 
-        if ( $TORrouter.InternetNAT )
+       <# if ( $TORrouter.InternetNAT )
         {
             $In=(Get-NetAdapter | Get-NetIpAddress | ? IpAddress -match $TORrouter.InsideNAT).InterfaceAlias
             $Out=(Get-NetAdapter | Get-NetIpAddress | ? IpAddress -match $TORrouter.OutsideNAT).InterfaceAlias
@@ -507,7 +507,7 @@ function New-ToRRouter()
             netsh routing ip nat  add int $in Private
             netsh routing ip nat  add int $out Full
         }
-
+        #>
         add-content C:\ToR.txt ""        
     } -ArgumentList $TORrouter
     Write-SDNNestedLog "<-- Tor Router : Staging $VMName is done"

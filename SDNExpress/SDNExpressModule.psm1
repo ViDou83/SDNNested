@@ -79,7 +79,10 @@ function New-SDNExpressNetworkController {
 
         if ($Cert -eq $Null) {
             write-verbose "Creating new REST certificate." 
-            $Cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$RESTName" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2")
+            #Vidou 
+            $Cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$RESTName" -KeyExportPolicy Exportable `
+                -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" `
+                -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2") -NotAfter (Get-Date).AddMonths(120)
         }
         else {
             write-verbose "Found existing REST certficate." 
@@ -183,7 +186,10 @@ function New-SDNExpressNetworkController {
             $Cert = get-childitem "Cert:\localmachine\my" | where { $_.Subject.ToUpper().StartsWith("CN=$NodeFQDN".ToUpper()) }
 
             if ($Cert -eq $null) {
-                $cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2")
+                #Vidou 
+                $cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable `
+                -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" `
+                -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2") -NotAfter (Get-Date).AddMonths(120)
             }
             else {
                 $HasServerEku = ($cert.EnhancedKeyUsageList | where { $_.ObjectId -eq "1.3.6.1.5.5.7.3.1" }) -ne $null
@@ -934,7 +940,10 @@ Function Add-SDNExpressHost {
         $cert = get-childitem "cert:\localmachine\my" | where { $_.Subject.ToUpper() -eq "CN=$NodeFQDN".ToUpper() }
         if ($Cert -eq $Null) {
             write-verbose "Creating new host certificate." 
-            $Cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2")
+            #vidou
+            $Cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable `
+            -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2") -NotAfter (Get-Date).AddMonths(120)
         }
         else {
             write-verbose "Found existing host certficate." 
@@ -1339,7 +1348,10 @@ Function Add-SDNExpressMux {
 
         $cert = get-childitem "cert:\localmachine\my" | where { $_.Subject.ToUpper() -eq "CN=$NodeFQDN".ToUpper() }
         if ($cert -eq $null) {
-            $cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2")
+            #vidou
+            $cert = New-SelfSignedCertificate -Type Custom -KeySpec KeyExchange -Subject "CN=$NodeFQDN" -KeyExportPolicy Exportable `
+            -HashAlgorithm sha256 -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.1,1.3.6.1.5.5.7.3.2") -NotAfter (Get-Date).AddMonths(120)
         }
 
         $targetCertPrivKey = $Cert.PrivateKey 
@@ -1378,7 +1390,7 @@ Function Add-SDNExpressMux {
         Remove-Item $TempFile.FullName -Force
     } -ArgumentList (, $NCHostCertData)
     
-
+    #vidou WSMAN
     $vmguid = invoke-command -computername $ComputerName {
         param(
             [String] $RestName
