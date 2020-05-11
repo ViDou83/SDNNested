@@ -1,6 +1,8 @@
 [CmdletBinding(DefaultParameterSetName = "NoParameters")]
 param(
-    [Parameter(Mandatory = $false)] [ValidateSet("Init","HostAgentRestart","GatewayFailover","UpdateHostSmbGlobalMapping","RestartLAB")] [String] $RunningMode = "Init"
+    [Parameter(Mandatory = $false)] 
+    [ValidateSet("Init","HostAgentRestart","GatewayFailover",
+                 "UpdateHostSmbGlobalMapping","RestartLAB","StopLAB","StartLAB")] [String] $Action = "Init"
 ) 
 
 function WaitVMs()
@@ -15,9 +17,9 @@ function WaitVMs()
 
     foreach ( $VM in $VMs)
     {
+        Write-Host -ForegroundColor Yellow "Checking that VM VMName=$VM is accessible via PS Remote"
         while ( $loop )
         {
-            Write-Host -ForegroundColor Yellow "Checking that VM VMName=$VM is accessible via PS Remote"
             #FQDN Case no PS Direct
             if ( $VM -match "\.")
             {
@@ -39,6 +41,7 @@ function WaitVMs()
         }
         $cpt++
         if ( $cpt -eq $VMs.Count) { break;}
+        $loop = $true
     }   
     Sleep 5
 }
@@ -125,31 +128,54 @@ $SDNMUXes   = @("SDN-MUX01.SDN.LAB","SDN-MUX02.SDN.LAB")
 $SDNNCs     = @("SDN-NC01.SDN.LAB")
 
 # Gateway failover case
-if ( $RunningMode -eq "GatewayFailover" )
+if ( $Action -eq "GatewayFailover" )
 {
     #Checking which GW is active and restart it!!!
     #Better approach would be using REST API but this is not a big program....
-    $ActiveGW = Invoke-Command $SDNToR -Credential $SDNAdmin -ea SilentlyContinue { 
-        Get-BgpPeer | Where-Object PeerName -Match GW | Where-Object ConnectivityStatus -eq Connected
-    } 
+    $ActiveGw= invoke-command -VMname $SDNHosts[0] -Credential $SDNAdmin { 
+        $Rest=(Get-ItemProperty "hklm:\system\currentcontrolset\services\nchostagent\parameters").PeerCertificateCName; 
+        $Rest="https://$Rest";
 
-    if ( $ActiveGW.PeerName )
-    { 
-        $GW=$ActiveGW.PeerName
-        Write-Host -ForegroundColor Yellow "Restarting GW=$GW......."
-        Invoke-Command "$GW.SDN.LAB" -Credential $SDNAdmin -ea SilentlyContinue { Restart-Computer -Force } 
-        Write-Host -ForegroundColor Yellow "You might need to checkout BGP Peering table on $SDNToR..."
+        $Gw=(Get-NetworkControllerGateway -ConnectionUri $Rest)
+        
+        $Gw | ForEach-Object{ 
+            if ( $_.properties.state -eq "Active")
+            { 
+                $_.resourceId 
+            } 
+        } 
+    }   
 
+    if ( $null -eq $ActiveGw)
+    {
+        $ActiveGW = Invoke-Command $SDNToR -Credential $SDNAdmin -ea SilentlyContinue { 
+            Get-BgpPeer | Where-Object PeerName -Match GW | Where-Object ConnectivityStatus -eq Connected
+        } 
+
+        if ( $ActiveGW.PeerName )
+        { 
+            $GW=$ActiveGW.PeerName
+            Write-Host -ForegroundColor Yellow "Found active gateway from ToR $SDNToR..."
+            $ActiveGW="$GW.SDN.LAB"
+        }
+        else { Write-Host -ForegroundColor Yellow "Cannot find the active GW from ToR router peering!" }
     }
-    else { Write-Host -ForegroundColor Yellow "Cannot find the active GW from ToR router peering!" }
+
+    if ( $ActiveGW )
+    {
+        Write-Host -ForegroundColor Yellow "Restarting $ActiveGW....."
+        Invoke-Command $ActiveGw -Credential $SDNAdmin -ea SilentlyContinue { Restart-Computer -Force } 
+    }
+    else { Write-Host -ForegroundColor Yellow "Cannot find the active GW!" }
+
 }
 # SDN Host's agent restart
-elseif( $RunningMode -eq "HostAgentRestart" ) 
+elseif( $Action -eq "HostAgentRestart" ) 
 {
     HostAgentRestart -Credential $SDNAdmin -HypvHosts $SDNHosts
 }
 # Reconfigure SMB Global mapping since the VMAS vm's name has been changed
-elseif( $RunningMode -eq "UpdateHostSmbGlobalMapping" )
+elseif( $Action -eq "UpdateHostSmbGlobalMapping" )
 { 
     #Update SMB Global Mapping
     $VMASUser = get-credential -Message "Please provide VMAS VM credential" VMASUser
@@ -171,7 +197,7 @@ elseif( $RunningMode -eq "UpdateHostSmbGlobalMapping" )
     }
 }
 # Default Mode.... Should bring everything UP and running
-elseif( $RunningMode -eq "Init" )
+elseif( $Action -eq "Init" )
 {
     #Cheking if VMMS is running
     if ( (Get-Service vmms).status -ne "Running")
@@ -198,70 +224,6 @@ elseif( $RunningMode -eq "Init" )
     $SDNDomainUsername = $SDNAdmin.GetNetworkCredential().UserName
     Invoke-Expression -Command "cmdkey /add:*.SDN.LAB /user:$SDNDomainUsername /pass:$SDNDomainPassword" | Out-Null
     
-    WaitVMs -Credential $SDNAdmin -VMs $SDNNCs
-
-    #Cleaning duplicate NC cert
-    $NetworkControllerInfo = invoke-command $SDNNCs[0] -Credential $SDNAdmin { Get-NetworkController }
-
-    if ( $NetworkControllerInfo )
-    {
-        foreach ( $SDNHost in $SDNHosts)
-        {
-            Invoke-Command -VMName $SDNHost -credential $SDNAdmin -ErrorAction SilentlyContinue {
-                $cred                   = $args[0]
-                $NetworkControllerInfo  = $args[1]
-                #Cleanup the mess if needed
-                $NCThumbprint   =   $NetworkControllerInfo.ServerCertificate.thumbprint
-                $NCSubject      =   $NetworkControllerInfo.ServerCertificate.subject
-                Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -Match $NCSubject | `
-                                Where-Object Thumbprint -ne $NCThumbprint | remove-Item
-            
-                #fixing WinRM issue 
-                $Mythumbprint = (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
-                if (  ! (winrm enumerate winrm/config/listener | findstr $Mythumbprint) )
-                {
-                    Write-Host -ForegroundColor Yellow "Checking certificates and winRm config"
-                    $RestName = (Get-ItemProperty "hklm:\system\currentcontrolset\services\nchostagent\parameters" `
-                                    -Name PeerCertificateCName).PeerCertificateCName
-                    Write-Host  "Allowing WinRM/HTTPS with certificate authentication between $env:COMPUTERNAME and $RestName"
-                    Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
-                    New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCThumbprint -Credential $cred -force
-                    New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
-                }
-                
-            } -ArgumentList $LocalAdmin,$NetworkControllerInfo
-        }
-
-        WaitVMs -Credential $SDNAdmin -VMs $SDNMUXes
-
-        #Now let's have a look to MUXes
-        foreach ( $SDNMux in $SDNMUXes)
-        {
-            Invoke-Command $SDNMux -credential $SDNAdmin {
-                $cred                   = $args[0]
-                $NetworkControllerInfo  = $args[1]
-
-                $NCThumbprint   =   $NetworkControllerInfo.ServerCertificate.thumbprint
-
-                $WSManClientCertificate=Get-childItem -Path WSMan:\localhost\ClientCertificate
-
-                $WSManClientCertificate.keys | ForEach-Object{ 
-                    if ( $_ -notmatch $NCThumbprint)
-                    {
-                        Set-Item -Path WSMan:\localhost\Service\Auth\Certificate $true
-
-                        $Mythumbprint = `
-                            (Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Subject -match $env:COMPUTERNAME }).Thumbprint
-                        New-Item -Path WSMan:\localhost\ClientCertificate -URI * -Issuer $NCThumbprint -Credential $cred -force
-                        get-childitem -Path WSMan:\localhost\Listener | Where-Object Keys -Match HTTPS | Remove-Item -ForceY
-                        New-Item -Path WSMan:\localhost\Listener -Address * -Transport HTTPS -CertificateThumbPrint $Mythumbprint -force
-                    }
-                }
-                Get-Netfirewallrule | Where-Object Name -Match WINRM-HTTP-In-TCP |  Set-NetFirewallRule -LocalPort 5985,5986
-            } -ArgumentList $LocalAdmin,$NetworkControllerInfo
-        }
-    }
-
     Write-Host -ForegroundColor yellow "SDN creds have been cached so you might be able to add SDN-HOST thouhg Hypv Mgmt Console
         or reach SDN VMs via PSSession or in WAC w/o being prompted. Condition is to user FQDN notation."
 
@@ -287,7 +249,7 @@ elseif( $RunningMode -eq "Init" )
     }
 }
 # Restart all SDN VM's and SDN Hosts
-elseif($RunningMode -eq "RestartLAB" )
+elseif($Action -eq "RestartLAB" )
 {
     Write-Host -ForegroundColor yellow "Restarting all SDN VMs"
     foreach ( $SDNHost in $SDNHosts)
@@ -305,5 +267,32 @@ elseif($RunningMode -eq "RestartLAB" )
         StartAllVMs -Credential $SDNAdmin -HypvHost $SDNHost
     }
 }
+# Restart all SDN VM's and SDN Hosts
+elseif($Action -eq "StopLAB" )
+{
+    Write-Host -ForegroundColor yellow "Stoping all SDN VMs"
+    foreach ( $SDNHost in $SDNHosts)
+    {
+        Invoke-Command  -VMName $SDNHost -credential $SDNAdmin -ErrorAction SilentlyContinue {
+            Get-VM | Stop-VM -Force 
+        }
+    }
 
+    #Stopping all VMs .. DC, Extenral GW and SDn-HOsts
+    Get-VM | Stop-VM -Force
+}
+# Restart all SDN VM's and SDN Hosts
+elseif($Action -eq "StartLAB" )
+{
+    Write-Host -ForegroundColor yellow "Starting all SDN VMs"
+    
+    #Stopping all VMs .. DC, Extenral GW and SDn-HOsts
+    Get-VM | Start-VM
 
+    WaitVMs -Credential $SDNAdmin -VMs $SDNHosts
+
+    foreach ( $SDNHost in $SDNHosts)
+    {
+        StartAllVMs -Credential $SDNAdmin -HypvHost $SDNHost
+    }
+}
