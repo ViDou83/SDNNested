@@ -470,6 +470,7 @@ function New-ToRRouter()
     Invoke-Command -VMName $VMName -Credential $credential { 
         $TORrouter = $args[0]
         
+        #Checking RRAS Status
         $run = (Get-Service RemoteAccess).status
         Set-Service RemoteAccess -StartupType Automatic
         if ( $run -ne "Running") { Start-Service RemoteAccess }
