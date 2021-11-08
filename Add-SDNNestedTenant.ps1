@@ -613,8 +613,8 @@ foreach( $Tenant in $configdata.Tenants)
             Import-Module -Name LoopbackAdapter 
 
             $run = (Get-Service RemoteAccess).status
-            if ( $run -ne "Running") { Start-Service RemoteAccess }
             Set-Service RemoteAccess -StartupType Automatic
+            if ( $run -ne "Running") { Start-Service RemoteAccess }
 
             $tunnelMode = $false                   
             if ( $ConnectionType -eq "L3" )
